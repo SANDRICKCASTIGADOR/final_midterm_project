@@ -845,247 +845,231 @@ class _RiderTrackerPageState extends State<RiderTrackerPage> {
       valueListenable: box.listenable(keys: ['isDark']),
       builder: (context, _, __) {
         final t = _T(box.get("isDark", defaultValue: false));
-        return CupertinoPageScaffold(
-          backgroundColor: t.page,
-          navigationBar: CupertinoNavigationBar(
-            backgroundColor: t.card,
-            border: Border(bottom: BorderSide(color: t.border, width: 0.5)),
-            middle: Text("Track Your Courier 🛵", style: TextStyle(fontWeight: FontWeight.w600, color: t.textPrimary)),
-            leading: CupertinoButton(padding: EdgeInsets.zero,
-                child: const Icon(CupertinoIcons.back, color: kHighlight),
-                onPressed: () => Navigator.pop(context)),
-          ),
-          child: SafeArea(
-            child: _isLoading
-                ? Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+        if (_isLoading) {
+          return CupertinoPageScaffold(
+            backgroundColor: t.page,
+            child: SafeArea(child: Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
               const CupertinoActivityIndicator(color: kHighlight, radius: 16),
               const SizedBox(height: 16),
               Text("Finding your courier...", style: TextStyle(color: t.textSecondary, fontSize: 14, fontWeight: FontWeight.w500)),
-            ]))
-                : SingleChildScrollView(
-              padding: const EdgeInsets.all(20),
-              child: Column(children: [
-                // ETA Banner
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(20),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF0A1628),
-                    borderRadius: BorderRadius.circular(22),
-                    boxShadow: [BoxShadow(color: kHighlight.withOpacity(0.25), blurRadius: 24, offset: const Offset(0, 12))],
-                  ),
+            ]))),
+          );
+        }
+        return CupertinoPageScaffold(
+          backgroundColor: t.page,
+          child: Stack(children: [
+            // ── Full screen Google Map ──
+            Positioned.fill(
+              child: GoogleMap(
+                initialCameraPosition: CameraPosition(
+                    target: _gridToLatLng(_riderCell.$1, _riderCell.$2), zoom: 15),
+                onMapCreated: (c) { _mapController = c; },
+                markers: _markers,
+                polylines: _polylines,
+                myLocationEnabled: false,
+                zoomControlsEnabled: false,
+                mapToolbarEnabled: false,
+                mapType: MapType.normal,
+              ),
+            ),
+
+            // ── Top bar (Google Maps style) ──
+            Positioned(
+              top: 0, left: 0, right: 0,
+              child: SafeArea(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
                   child: Row(children: [
-                    Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      Text(_isDelivered ? "Delivered! 🎉" : "Arriving in",
-                          style: const TextStyle(color: Color(0xFFAAC4E8), fontSize: 13, fontWeight: FontWeight.w500)),
-                      const SizedBox(height: 4),
-                      Text(_isDelivered ? "🎉" : "$_etaMinutes mins",
-                          style: const TextStyle(color: Colors.white, fontSize: 44, fontWeight: FontWeight.w800, height: 1)),
-                      const SizedBox(height: 4),
-                      Text(widget.itemName, style: const TextStyle(color: Color(0xFFAAC4E8), fontSize: 13, fontWeight: FontWeight.w600)),
-                    ])),
-                    Text(_isDelivered ? '🎉' : '📦', style: const TextStyle(fontSize: 50)),
-                  ]),
-                ),
-                const SizedBox(height: 16),
-
-                // Google Map with A* route
-                Container(
-                  height: 280,
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(20),
-                    boxShadow: [BoxShadow(color: kHighlight.withOpacity(0.15), blurRadius: 20, offset: const Offset(0, 8))],
-                  ),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(20),
-                    child: Stack(children: [
-                      GoogleMap(
-                        initialCameraPosition: CameraPosition(
-                            target: _gridToLatLng(_riderCell.$1, _riderCell.$2), zoom: 14),
-                        onMapCreated: (c) { _mapController = c; },
-                        markers: _markers,
-                        polylines: _polylines,
-                        myLocationEnabled: false,
-                        zoomControlsEnabled: false,
-                        mapToolbarEnabled: false,
+                    CupertinoButton(
+                      padding: EdgeInsets.zero,
+                      onPressed: () => Navigator.pop(context),
+                      child: Container(
+                        width: 42, height: 42,
+                        decoration: BoxDecoration(color: Colors.white, shape: BoxShape.circle,
+                            boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.2), blurRadius: 8)]),
+                        child: const Icon(CupertinoIcons.back, color: Colors.black87, size: 20),
                       ),
-                      // LIVE badge
-                      Positioned(top: 12, right: 12,
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                            decoration: BoxDecoration(color: kHighlight, borderRadius: BorderRadius.circular(8)),
-                            child: Row(mainAxisSize: MainAxisSize.min, children: [
-                              Container(width: 6, height: 6,
-                                  decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle)),
-                              const SizedBox(width: 4),
-                              const Text('LIVE', style: TextStyle(color: Colors.white, fontSize: 10,
-                                  fontWeight: FontWeight.w700, letterSpacing: 0.5)),
-                            ]),
-                          )),
-                      // ETA overlay
-                      Positioned(top: 12, left: 12,
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                            decoration: BoxDecoration(
-                                color: Colors.white, borderRadius: BorderRadius.circular(12),
-                                boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.15), blurRadius: 8)]),
-                            child: Row(mainAxisSize: MainAxisSize.min, children: [
-                              const Icon(CupertinoIcons.clock, size: 13, color: kHighlight),
-                              const SizedBox(width: 5),
-                              Text(_isDelivered ? "Delivered!" : "$_etaMinutes mins",
-                                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: kDark)),
-                            ]),
-                          )),
-                      // A* badge
-                      Positioned(bottom: 12, left: 12,
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                            decoration: BoxDecoration(color: kGreen.withOpacity(0.9), borderRadius: BorderRadius.circular(8)),
-                            child: const Text('A* PATHFINDING', style: TextStyle(color: Colors.white,
-                                fontSize: 9, fontWeight: FontWeight.w800, letterSpacing: 0.5)),
-                          )),
-                      Positioned(bottom: 12, right: 12,
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                            decoration: BoxDecoration(color: Colors.white.withOpacity(0.9), borderRadius: BorderRadius.circular(8)),
-                            child: Text('${(_path.length - 1 - _pathIndex).clamp(0, 999)} steps left',
-                                style: const TextStyle(fontSize: 9, fontWeight: FontWeight.w700, color: kDark)),
-                          )),
-                    ]),
-                  ),
-                ),
-                const SizedBox(height: 16),
-
-                // Legend
-                Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                  _legend(kGreen, "Green = A* Route", t),
-                  const SizedBox(width: 16),
-                  _legend(const Color(0xFF4285F4), "Blue = Destination 📍", t),
-                ]),
-                const SizedBox(height: 16),
-
-                // Status steps
-                Container(
-                  padding: const EdgeInsets.all(18),
-                  decoration: BoxDecoration(color: t.card, borderRadius: BorderRadius.circular(18),
-                      border: Border.all(color: t.border, width: 1)),
-                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Text("Delivery Status", style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: t.textPrimary)),
-                    const SizedBox(height: 14),
-                    ...List.generate(_steps.length, (i) {
-                      final isActive  = _statusStep >= i;
-                      final isCurrent = _statusStep == i;
-                      return Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                        Column(children: [
-                          Container(width: 30, height: 30,
-                              decoration: BoxDecoration(shape: BoxShape.circle, color: isActive ? kHighlight : t.border),
-                              child: Center(child: isCurrent && !_isDelivered
-                                  ? const CupertinoActivityIndicator(color: Colors.white, radius: 7)
-                                  : Icon(isActive ? CupertinoIcons.check_mark : CupertinoIcons.circle,
-                                  color: isActive ? Colors.white : t.textSecondary, size: 13))),
-                          if (i < _steps.length - 1)
-                            Container(width: 2, height: 34, color: _statusStep > i ? kHighlight : t.border),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                        decoration: BoxDecoration(color: Colors.white,
+                            borderRadius: BorderRadius.circular(12),
+                            boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.15), blurRadius: 10)]),
+                        child: Row(children: [
+                          const Icon(CupertinoIcons.location_solid, color: Color(0xFF34A853), size: 14),
+                          const SizedBox(width: 8),
+                          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                            const Text("Tarlac City, Central Luzon",
+                                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Colors.black87)),
+                            const Text("Delivery destination",
+                                style: TextStyle(fontSize: 10, color: Colors.grey)),
+                          ])),
                         ]),
-                        const SizedBox(width: 12),
-                        Expanded(child: Padding(
-                          padding: const EdgeInsets.only(top: 4),
-                          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                            Text(_steps[i]["title"]!, style: TextStyle(fontSize: 13,
-                                fontWeight: isActive ? FontWeight.w700 : FontWeight.w400,
-                                color: isActive ? t.textPrimary : t.textSecondary)),
-                            if (isActive) ...[
-                              const SizedBox(height: 2),
-                              Text(_steps[i]["sub"]!, style: TextStyle(fontSize: 11,
-                                  color: isCurrent ? kHighlight : t.textSecondary,
-                                  fontWeight: isCurrent ? FontWeight.w500 : FontWeight.w400)),
-                            ],
-                            const SizedBox(height: 18),
-                          ]),
-                        )),
-                      ]);
-                    }),
+                      ),
+                    ),
                   ]),
                 ),
-                const SizedBox(height: 16),
+              ),
+            ),
 
-                // Courier card
-                Container(
-                  padding: const EdgeInsets.all(18),
-                  decoration: BoxDecoration(color: t.card, borderRadius: BorderRadius.circular(18),
-                      border: Border.all(color: t.border, width: 1)),
-                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Row(children: [
-                      Text("Your Courier", style: TextStyle(fontSize: 12, color: t.textSecondary, fontWeight: FontWeight.w500)),
-                      const Spacer(),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                        decoration: BoxDecoration(color: kHighlight.withOpacity(0.15), borderRadius: BorderRadius.circular(6)),
-                        child: const Text('FROM API ✅', style: TextStyle(fontSize: 9, color: kHighlight, fontWeight: FontWeight.w700)),
-                      ),
-                    ]),
-                    const SizedBox(height: 12),
-                    Row(children: [
-                      Container(width: 50, height: 50,
-                          decoration: BoxDecoration(
-                              gradient: const LinearGradient(colors: [kHighlight, kAccentMid]),
-                              borderRadius: BorderRadius.circular(14)),
-                          child: Center(child: Text(_riderName.isNotEmpty ? _riderName[0] : '?',
-                              style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w700)))),
-                      const SizedBox(width: 12),
+            // ── LIVE badge ──
+            Positioned(
+              top: 110, right: 12,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                decoration: BoxDecoration(color: const Color(0xFFEA4335),
+                    borderRadius: BorderRadius.circular(20),
+                    boxShadow: [BoxShadow(color: const Color(0xFFEA4335).withOpacity(0.4), blurRadius: 8)]),
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  Container(width: 6, height: 6,
+                      decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle)),
+                  const SizedBox(width: 4),
+                  const Text('LIVE', style: TextStyle(color: Colors.white, fontSize: 10,
+                      fontWeight: FontWeight.w800, letterSpacing: 0.5)),
+                ]),
+              ),
+            ),
+
+            // ── A* + Steps badges ──
+            Positioned(
+              bottom: 330, left: 12,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                decoration: BoxDecoration(color: const Color(0xFF34A853).withOpacity(0.9),
+                    borderRadius: BorderRadius.circular(8)),
+                child: const Text('A* PATHFINDING', style: TextStyle(color: Colors.white,
+                    fontSize: 9, fontWeight: FontWeight.w800, letterSpacing: 0.5)),
+              ),
+            ),
+            Positioned(
+              bottom: 330, right: 12,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                decoration: BoxDecoration(color: Colors.white.withOpacity(0.95),
+                    borderRadius: BorderRadius.circular(8),
+                    boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 4)]),
+                child: Text('${(_path.length - 1 - _pathIndex).clamp(0, 999)} steps left',
+                    style: const TextStyle(fontSize: 9, fontWeight: FontWeight.w700, color: Colors.black87)),
+              ),
+            ),
+
+            // ── Bottom Sheet ──
+            Positioned(
+              bottom: 0, left: 0, right: 0,
+              child: Container(
+                decoration: BoxDecoration(
+                  color: t.page,
+                  borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+                  boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.15), blurRadius: 20, offset: const Offset(0, -4))],
+                ),
+                child: Column(mainAxisSize: MainAxisSize.min, children: [
+                  // Handle
+                  Padding(
+                    padding: const EdgeInsets.only(top: 10, bottom: 6),
+                    child: Container(width: 36, height: 4,
+                        decoration: BoxDecoration(color: t.border, borderRadius: BorderRadius.circular(2))),
+                  ),
+                  // Arriving banner
+                  Container(
+                    padding: const EdgeInsets.fromLTRB(20, 8, 20, 12),
+                    child: Row(children: [
                       Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                        Text(_riderName, style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: t.textPrimary)),
-                        const SizedBox(height: 3),
+                        Text(_isDelivered ? "Delivered! 🎉" : "Arriving in",
+                            style: TextStyle(color: t.textSecondary, fontSize: 12, fontWeight: FontWeight.w500)),
+                        Text(_isDelivered ? "🎉" : "$_etaMinutes min",
+                            style: const TextStyle(color: Color(0xFF1a73e8), fontSize: 30,
+                                fontWeight: FontWeight.w800, height: 1.1)),
+                        Text(widget.itemName, style: TextStyle(fontSize: 13,
+                            fontWeight: FontWeight.w600, color: t.textPrimary)),
+                      ])),
+                      Text(_isDelivered ? '🎉' : '🛵', style: const TextStyle(fontSize: 42)),
+                    ]),
+                  ),
+                  // Courier row
+                  Container(
+                    margin: const EdgeInsets.fromLTRB(12, 0, 12, 10),
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(color: t.card, borderRadius: BorderRadius.circular(14),
+                        border: Border.all(color: t.border)),
+                    child: Row(children: [
+                      Container(width: 44, height: 44,
+                          decoration: BoxDecoration(
+                              gradient: const LinearGradient(colors: [Color(0xFF34A853), Color(0xFF1a7a3a)]),
+                              borderRadius: BorderRadius.circular(22)),
+                          child: Center(child: Text(_riderName.isNotEmpty ? _riderName[0] : '?',
+                              style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w700)))),
+                      const SizedBox(width: 10),
+                      Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        Text(_riderName, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: t.textPrimary)),
                         Row(children: [
                           const Icon(CupertinoIcons.star_fill, size: 11, color: Color(0xFFFFC107)),
                           const SizedBox(width: 4),
                           Text('$_riderRating · $_riderPlate',
-                              style: TextStyle(fontSize: 11, color: t.textSecondary, fontWeight: FontWeight.w500)),
+                              style: TextStyle(fontSize: 10, color: t.textSecondary)),
+                          const Text(' · FROM API ✅', style: TextStyle(fontSize: 10, color: Color(0xFF34A853), fontWeight: FontWeight.w600)),
                         ]),
                       ])),
-                      Container(padding: const EdgeInsets.all(11),
-                          decoration: BoxDecoration(color: CupertinoColors.systemGreen.withOpacity(0.15), borderRadius: BorderRadius.circular(11)),
-                          child: const Icon(CupertinoIcons.phone_fill, color: CupertinoColors.systemGreen, size: 18)),
-                      const SizedBox(width: 8),
-                      Container(padding: const EdgeInsets.all(11),
-                          decoration: BoxDecoration(color: kHighlight.withOpacity(0.15), borderRadius: BorderRadius.circular(11)),
-                          child: const Icon(CupertinoIcons.chat_bubble_fill, color: kHighlight, size: 18)),
+                      Container(padding: const EdgeInsets.all(9),
+                          decoration: BoxDecoration(color: const Color(0xFFe8f5e9), borderRadius: BorderRadius.circular(20)),
+                          child: const Icon(CupertinoIcons.phone_fill, color: Color(0xFF34A853), size: 15)),
+                      const SizedBox(width: 6),
+                      Container(padding: const EdgeInsets.all(9),
+                          decoration: BoxDecoration(color: const Color(0xFFe3f2fd), borderRadius: BorderRadius.circular(20)),
+                          child: const Icon(CupertinoIcons.chat_bubble_fill, color: Color(0xFF1a73e8), size: 15)),
                     ]),
-                  ]),
-                ),
-                const SizedBox(height: 16),
-
-                // Order ID
-                Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(color: t.card, borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: t.border, width: 1)),
-                  child: Row(children: [
-                    Container(padding: const EdgeInsets.all(9),
-                        decoration: BoxDecoration(color: kHighlight.withOpacity(0.15), borderRadius: BorderRadius.circular(10)),
-                        child: const Icon(CupertinoIcons.doc_text, color: kHighlight, size: 16)),
-                    const SizedBox(width: 12),
-                    Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      Text("Order ID", style: TextStyle(fontSize: 10, color: t.textSecondary, fontWeight: FontWeight.w500)),
-                      const SizedBox(height: 2),
-                      Text(widget.orderId, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: t.textPrimary),
-                          overflow: TextOverflow.ellipsis),
-                    ])),
-                  ]),
-                ),
-                const SizedBox(height: 32),
-              ]),
+                  ),
+                  // Status steps
+                  Container(
+                    margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(color: t.card, borderRadius: BorderRadius.circular(14),
+                        border: Border.all(color: t.border)),
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Text("Delivery Status", style: TextStyle(fontSize: 13,
+                          fontWeight: FontWeight.w700, color: t.textPrimary)),
+                      const SizedBox(height: 10),
+                      ...List.generate(_steps.length, (i) {
+                        final isActive  = _statusStep >= i;
+                        final isCurrent = _statusStep == i;
+                        return Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                          Column(children: [
+                            Container(width: 24, height: 24,
+                                decoration: BoxDecoration(shape: BoxShape.circle,
+                                    color: isActive ? const Color(0xFF34A853) : t.border),
+                                child: Center(child: isCurrent && !_isDelivered
+                                    ? const CupertinoActivityIndicator(color: Colors.white, radius: 6)
+                                    : Icon(isActive ? CupertinoIcons.check_mark : CupertinoIcons.circle,
+                                    color: isActive ? Colors.white : t.textSecondary, size: 11))),
+                            if (i < _steps.length - 1)
+                              Container(width: 2, height: 22,
+                                  color: _statusStep > i ? const Color(0xFF34A853) : t.border),
+                          ]),
+                          const SizedBox(width: 10),
+                          Expanded(child: Padding(
+                            padding: const EdgeInsets.only(top: 2),
+                            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                              Text(_steps[i]["title"]!, style: TextStyle(fontSize: 12,
+                                  fontWeight: isActive ? FontWeight.w700 : FontWeight.w400,
+                                  color: isCurrent ? const Color(0xFF1a73e8)
+                                      : isActive ? t.textPrimary : t.textSecondary)),
+                              if (isActive) Text(_steps[i]["sub"]!, style: TextStyle(fontSize: 10,
+                                  color: isCurrent ? const Color(0xFF34A853) : t.textSecondary)),
+                              const SizedBox(height: 12),
+                            ]),
+                          )),
+                        ]);
+                      }),
+                    ]),
+                  ),
+                  const SizedBox(height: 8),
+                ]),
+              ),
             ),
-          ),
+          ]),
         );
       },
     );
-  }
-
-  Widget _legend(Color color, String label, _T t) {
-    return Row(mainAxisSize: MainAxisSize.min, children: [
-      Container(width: 12, height: 12, decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(3))),
-      const SizedBox(width: 5),
-      Text(label, style: TextStyle(fontSize: 10, color: t.textSecondary, fontWeight: FontWeight.w500)),
-    ]);
   }
 }
