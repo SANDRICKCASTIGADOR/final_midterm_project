@@ -36,7 +36,6 @@ class _OrdersPageState extends State<OrdersPage> {
     super.dispose();
   }
 
-  // ─── Real-time stream ──────────────────────────────────────────────────────
   void _listenToOrders() {
     _ordersSubscription = supabase
         .from('orders')
@@ -52,7 +51,6 @@ class _OrdersPageState extends State<OrdersPage> {
     });
   }
 
-  // ─── Fetch rider data ──────────────────────────────────────────────────────
   Future<void> _fetchRiderData() async {
     if (_orders.isEmpty) return;
     final ids = _orders.map((o) => o['id'] as String).toList();
@@ -70,7 +68,6 @@ class _OrdersPageState extends State<OrdersPage> {
     } catch (_) {}
   }
 
-  // ─── Manual refresh ────────────────────────────────────────────────────────
   Future<void> _refreshOrders() async {
     setState(() => _isLoading = true);
     try {
@@ -89,61 +86,43 @@ class _OrdersPageState extends State<OrdersPage> {
     }
   }
 
-  // ─── Status helpers ────────────────────────────────────────────────────────
   Color _statusColor(String status) {
     switch (status) {
-      case 'delivered':
-        return const Color(0xFF34A853);
+      case 'delivered': return const Color(0xFF34A853);
       case 'on_the_way':
-      case 'nearby':
-        return const Color(0xFF1a73e8);
-      case 'preparing':
-        return const Color(0xFFF59E0B);
-      default:
-        return const Color(0xFF9E9E9E);
+      case 'nearby': return const Color(0xFF1a73e8);
+      case 'preparing': return const Color(0xFFF59E0B);
+      default: return const Color(0xFF9E9E9E);
     }
   }
 
   IconData _statusIcon(String status) {
     switch (status) {
-      case 'delivered':
-        return CupertinoIcons.checkmark_seal_fill;
+      case 'delivered': return CupertinoIcons.checkmark_seal_fill;
       case 'on_the_way':
-      case 'nearby':
-        return CupertinoIcons.arrow_right_circle_fill;
-      case 'preparing':
-        return CupertinoIcons.archivebox_fill;
-      default:
-        return CupertinoIcons.clock_fill;
+      case 'nearby': return CupertinoIcons.arrow_right_circle_fill;
+      case 'preparing': return CupertinoIcons.archivebox_fill;
+      default: return CupertinoIcons.clock_fill;
     }
   }
 
   String _statusLabel(String status) {
     switch (status) {
-      case 'delivered':
-        return 'Delivered';
-      case 'on_the_way':
-        return 'On the Way 🛵';
-      case 'nearby':
-        return 'Almost There 📍';
-      case 'preparing':
-        return 'Preparing 📦';
-      case 'confirmed':
-        return 'Confirmed ✅';
-      default:
-        return status.toUpperCase();
+      case 'delivered': return 'Delivered';
+      case 'on_the_way': return 'On the Way 🛵';
+      case 'nearby': return 'Almost There 📍';
+      case 'preparing': return 'Preparing 📦';
+      case 'confirmed': return 'Confirmed ✅';
+      default: return status.toUpperCase();
     }
   }
 
-  // ─── Order card ────────────────────────────────────────────────────────────
   Widget _buildOrderCard(Map<String, dynamic> order, AppTheme t) {
     final orderId = order['id'] as String? ?? '';
     final itemName = order['food_name'] as String? ?? 'Unknown Item';
     final rider = _riderData[orderId];
-    final riderStatus =
-        rider?['status'] as String? ??
-            order['status'] as String? ??
-            'confirmed';
+    final riderStatus = rider?['status'] as String? ??
+        order['status'] as String? ?? 'confirmed';
     final etaMinutes = rider?['eta_minutes'] as int? ?? 0;
 
     final isDelivered = riderStatus == 'delivered';
@@ -160,7 +139,6 @@ class _OrdersPageState extends State<OrdersPage> {
         border: Border.all(color: t.border, width: 1.2),
         boxShadow: [
           BoxShadow(
-            // ✅ FIX: t.dark → t.isDark  (AppTheme exposes isDark, not dark)
             color: kHighlight.withOpacity(t.isDark ? 0.10 : 0.06),
             blurRadius: 16,
             offset: const Offset(0, 5),
@@ -172,7 +150,6 @@ class _OrdersPageState extends State<OrdersPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // ── Header row ──────────────────────────────────────────────────
             Row(
               children: [
                 Container(
@@ -182,27 +159,21 @@ class _OrdersPageState extends State<OrdersPage> {
                         colors: [kHighlight, kAccentMid]),
                     borderRadius: BorderRadius.circular(12),
                   ),
-                  child: const Icon(
-                    CupertinoIcons.desktopcomputer,
-                    color: Colors.white,
-                    size: 18,
-                  ),
+                  child: const Icon(CupertinoIcons.desktopcomputer,
+                      color: Colors.white, size: 18),
                 ),
                 const SizedBox(width: 10),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        itemName,
-                        style: TextStyle(
-                          fontSize: 13.5,
-                          fontWeight: FontWeight.w700,
-                          color: t.textPrimary,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
+                      Text(itemName,
+                          style: TextStyle(
+                              fontSize: 13.5,
+                              fontWeight: FontWeight.w700,
+                              color: t.textPrimary),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis),
                       const SizedBox(height: 2),
                       Text(
                         orderId.length > 26
@@ -229,21 +200,17 @@ class _OrdersPageState extends State<OrdersPage> {
                       Icon(_statusIcon(riderStatus),
                           color: statusColor, size: 11),
                       const SizedBox(width: 4),
-                      Text(
-                        _statusLabel(riderStatus),
-                        style: TextStyle(
-                          fontSize: 9.5,
-                          fontWeight: FontWeight.w700,
-                          color: statusColor,
-                        ),
-                      ),
+                      Text(_statusLabel(riderStatus),
+                          style: TextStyle(
+                              fontSize: 9.5,
+                              fontWeight: FontWeight.w700,
+                              color: statusColor)),
                     ],
                   ),
                 ),
               ],
             ),
 
-            // ── ETA ─────────────────────────────────────────────────────────
             if (!isDelivered && etaMinutes > 0) ...[
               const SizedBox(height: 9),
               Row(
@@ -254,16 +221,14 @@ class _OrdersPageState extends State<OrdersPage> {
                   Text(
                     'ETA: $etaMinutes min${etaMinutes > 1 ? 's' : ''}',
                     style: TextStyle(
-                      fontSize: 11,
-                      color: t.textSecondary,
-                      fontWeight: FontWeight.w500,
-                    ),
+                        fontSize: 11,
+                        color: t.textSecondary,
+                        fontWeight: FontWeight.w500),
                   ),
                 ],
               ),
             ],
 
-            // ── Rider info ───────────────────────────────────────────────────
             if (rider != null) ...[
               const SizedBox(height: 10),
               Container(
@@ -276,8 +241,7 @@ class _OrdersPageState extends State<OrdersPage> {
                 child: Row(
                   children: [
                     Container(
-                      width: 30,
-                      height: 30,
+                      width: 30, height: 30,
                       decoration: BoxDecoration(
                         gradient: const LinearGradient(colors: [
                           Color(0xFF34A853),
@@ -292,10 +256,9 @@ class _OrdersPageState extends State<OrdersPage> {
                               ? (rider['rider_name'] as String)[0]
                               : '?',
                           style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 13,
-                            fontWeight: FontWeight.w700,
-                          ),
+                              color: Colors.white,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700),
                         ),
                       ),
                     ),
@@ -304,19 +267,15 @@ class _OrdersPageState extends State<OrdersPage> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(
-                            rider['rider_name'] as String? ?? '---',
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                              color: t.textPrimary,
-                            ),
-                          ),
+                          Text(rider['rider_name'] as String? ?? '---',
+                              style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                  color: t.textPrimary)),
                           Row(
                             children: [
                               const Icon(CupertinoIcons.star_fill,
-                                  size: 10,
-                                  color: Color(0xFFFFC107)),
+                                  size: 10, color: Color(0xFFFFC107)),
                               const SizedBox(width: 3),
                               Text(
                                 '${rider['rider_rating'] ?? '--'} · ${rider['rider_plate'] ?? '---'}',
@@ -336,7 +295,6 @@ class _OrdersPageState extends State<OrdersPage> {
               ),
             ],
 
-            // ── Action button ────────────────────────────────────────────────
             const SizedBox(height: 12),
 
             if (isTrackable)
@@ -346,7 +304,6 @@ class _OrdersPageState extends State<OrdersPage> {
                   padding: EdgeInsets.zero,
                   color: kHighlight,
                   borderRadius: BorderRadius.circular(12),
-                  // ✅ FIX: rider is already Map<String,dynamic>? — no extra cast needed
                   onPressed: () => _openTracker(order, rider),
                   child: const Row(
                     mainAxisAlignment: MainAxisAlignment.center,
@@ -354,14 +311,11 @@ class _OrdersPageState extends State<OrdersPage> {
                       Icon(CupertinoIcons.map_fill,
                           size: 13, color: Colors.white),
                       SizedBox(width: 6),
-                      Text(
-                        'Track Location 🗺️',
-                        style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w700,
-                          color: Colors.white,
-                        ),
-                      ),
+                      Text('Track Location 🗺️',
+                          style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                              color: Colors.white)),
                     ],
                   ),
                 ),
@@ -383,14 +337,11 @@ class _OrdersPageState extends State<OrdersPage> {
                     Icon(CupertinoIcons.checkmark_circle_fill,
                         size: 13, color: Color(0xFF34A853)),
                     SizedBox(width: 6),
-                    Text(
-                      'Delivered 🎉',
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w700,
-                        color: Color(0xFF34A853),
-                      ),
-                    ),
+                    Text('Delivered 🎉',
+                        style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                            color: Color(0xFF34A853))),
                   ],
                 ),
               ),
@@ -410,14 +361,11 @@ class _OrdersPageState extends State<OrdersPage> {
                     const CupertinoActivityIndicator(
                         color: kHighlight, radius: 7),
                     const SizedBox(width: 8),
-                    Text(
-                      'Waiting for rider...',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        color: t.textSecondary,
-                      ),
-                    ),
+                    Text('Waiting for rider...',
+                        style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: t.textSecondary)),
                   ],
                 ),
               ),
@@ -427,29 +375,34 @@ class _OrdersPageState extends State<OrdersPage> {
     );
   }
 
-  // ─── Open tracker ──────────────────────────────────────────────────────────
-  // ✅ FIX: rider param typed as Map<String, dynamic>? (nullable)
+  // ─── UPDATED: Added riderStartLat & riderStartLng (Santa Ana, Pampanga) ──
   void _openTracker(
       Map<String, dynamic> order, Map<String, dynamic>? rider) {
     final orderId = order['id'] as String? ?? '';
     final itemName = order['food_name'] as String? ?? 'Your Order';
 
-    final destLat = (rider?['lat'] as num?)?.toDouble() ?? 15.4755;
-    final destLng = (rider?['lng'] as num?)?.toDouble() ?? 120.5963;
+    // ── Santa Ana, Pampanga ──
+    const double riderStartLat = 15.0820;
+    const double riderStartLng = 120.7780;
 
-    const double baseLat = 15.4730;
-    const double baseLng = 120.5930;
+    final destLat =
+        (rider?['lat'] as num?)?.toDouble() ?? riderStartLat;
+    final destLng =
+        (rider?['lng'] as num?)?.toDouble() ?? riderStartLng;
+
     const double latStep = 0.002;
     const double lngStep = 0.002;
     const int kRows = 12;
     const int kCols = 10;
 
     final int destGridRow =
-    ((baseLat + (kRows - 1) * latStep - destLat) / latStep)
+    ((riderStartLat + (kRows - 1) * latStep - destLat) / latStep)
         .round()
         .clamp(0, kRows - 1);
     final int destGridCol =
-    ((destLng - baseLng) / lngStep).round().clamp(0, kCols - 1);
+    ((destLng - riderStartLng) / lngStep)
+        .round()
+        .clamp(0, kCols - 1);
 
     Navigator.push(
       context,
@@ -461,18 +414,18 @@ class _OrdersPageState extends State<OrdersPage> {
           destGridCol: destGridCol,
           destLat: destLat,
           destLng: destLng,
+          riderStartLat: riderStartLat,   // ← ADDED
+          riderStartLng: riderStartLng,   // ← ADDED
         ),
       ),
     );
   }
 
-  // ─── Build ─────────────────────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
     return ValueListenableBuilder(
       valueListenable: box.listenable(keys: ['isDark']),
       builder: (context, _, __) {
-        // ✅ FIX: AppTheme uses named param isDark: not positional
         final t = AppTheme(isDark: isDark);
 
         return CupertinoPageScaffold(
@@ -481,14 +434,10 @@ class _OrdersPageState extends State<OrdersPage> {
             backgroundColor: t.card,
             border: Border(
                 bottom: BorderSide(color: t.border, width: 0.5)),
-            middle: Text(
-              'My Orders 📦',
-              style: TextStyle(
-                fontWeight: FontWeight.w700,
-                color: t.textPrimary,
-              ),
-            ),
-            // ✅ FIX: child & onPressed order matters in CupertinoButton
+            middle: Text('My Orders 📦',
+                style: TextStyle(
+                    fontWeight: FontWeight.w700,
+                    color: t.textPrimary)),
             trailing: CupertinoButton(
               padding: EdgeInsets.zero,
               onPressed: _refreshOrders,
@@ -505,14 +454,11 @@ class _OrdersPageState extends State<OrdersPage> {
                   const CupertinoActivityIndicator(
                       color: kHighlight, radius: 16),
                   const SizedBox(height: 14),
-                  Text(
-                    'Loading orders...',
-                    style: TextStyle(
-                      color: t.textSecondary,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
+                  Text('Loading orders...',
+                      style: TextStyle(
+                          color: t.textSecondary,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w500)),
                 ],
               ),
             )
@@ -524,23 +470,19 @@ class _OrdersPageState extends State<OrdersPage> {
                   const Text('📦',
                       style: TextStyle(fontSize: 60)),
                   const SizedBox(height: 16),
-                  Text(
-                    'No orders yet',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w700,
-                      color: t.textPrimary,
-                    ),
-                  ),
+                  Text('No orders yet',
+                      style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w700,
+                          color: t.textPrimary)),
                   const SizedBox(height: 6),
                   Text(
                     'Your orders will appear here\nafter you purchase a laptop!',
                     textAlign: TextAlign.center,
                     style: TextStyle(
-                      fontSize: 13,
-                      color: t.textSecondary,
-                      height: 1.5,
-                    ),
+                        fontSize: 13,
+                        color: t.textSecondary,
+                        height: 1.5),
                   ),
                 ],
               ),
@@ -557,32 +499,25 @@ class _OrdersPageState extends State<OrdersPage> {
                         Text(
                           '${_orders.length} Order${_orders.length != 1 ? 's' : ''}',
                           style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                            color: t.textSecondary,
-                          ),
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              color: t.textSecondary),
                         ),
                         const Spacer(),
                         Container(
-                          padding:
-                          const EdgeInsets.symmetric(
-                              horizontal: 9,
-                              vertical: 4),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 9, vertical: 4),
                           decoration: BoxDecoration(
-                            color: kHighlight
-                                .withOpacity(0.12),
+                            color: kHighlight.withOpacity(0.12),
                             borderRadius:
                             BorderRadius.circular(8),
                           ),
-                          child: const Text(
-                            'REAL-TIME ⚡',
-                            style: TextStyle(
-                              fontSize: 9,
-                              fontWeight: FontWeight.w800,
-                              color: kHighlight,
-                              letterSpacing: 0.5,
-                            ),
-                          ),
+                          child: const Text('REAL-TIME ⚡',
+                              style: TextStyle(
+                                  fontSize: 9,
+                                  fontWeight: FontWeight.w800,
+                                  color: kHighlight,
+                                  letterSpacing: 0.5)),
                         ),
                       ],
                     ),

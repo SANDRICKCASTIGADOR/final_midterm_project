@@ -152,7 +152,7 @@ List<(int, int)> aStarPath({
   return [];
 }
 
-// ─── Homepage (Tab Scaffold) ───────────────────────────────────────────────────
+// ─── Homepage ──────────────────────────────────────────────────────────────────
 class Homepage extends StatefulWidget {
   const Homepage({super.key});
 
@@ -170,7 +170,6 @@ class _HomepageState extends State<Homepage> {
   String paymentStatus = "";
   bool isPolling = false;
 
-  // ── NEW: GPS / Location state ──────────────────────────────────────────────
   LatLng? _currentLatLng;
   String _locationLabel = "Getting location...";
   bool _locationLoading = true;
@@ -178,10 +177,14 @@ class _HomepageState extends State<Homepage> {
 
   bool get isDark => box.get("isDark", defaultValue: false);
 
+  // ── Santa Ana, Pampanga coordinates ──
+  static const double kSantaAnaLat = 15.0820;
+  static const double kSantaAnaLng = 120.7780;
+
   @override
   void initState() {
     super.initState();
-    _initLocation(); // ← fetch real GPS on startup
+    _initLocation();
   }
 
   @override
@@ -190,7 +193,6 @@ class _HomepageState extends State<Homepage> {
     super.dispose();
   }
 
-  // ── NEW: GPS fetch + reverse geocoding ────────────────────────────────────
   Future<void> _initLocation() async {
     setState(() => _locationLoading = true);
     try {
@@ -248,7 +250,6 @@ class _HomepageState extends State<Homepage> {
     }
   }
 
-  // ─── Laptop card ────────────────────────────────────────────────────────────
   Widget _laptopCard(LaptopItem laptop, AppTheme t) {
     return GestureDetector(
       onTap: () {
@@ -334,23 +335,17 @@ class _HomepageState extends State<Homepage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    laptop.name,
-                    style: TextStyle(
-                        fontWeight: FontWeight.w800,
-                        fontSize: 13.5,
-                        color: t.textPrimary),
-                  ),
+                  Text(laptop.name,
+                      style: TextStyle(
+                          fontWeight: FontWeight.w800,
+                          fontSize: 13.5,
+                          color: t.textPrimary)),
                   const SizedBox(height: 4),
-                  Text(
-                    laptop.specs,
-                    style: TextStyle(
-                        fontSize: 10,
-                        color: t.textSecondary,
-                        height: 1.45),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
+                  Text(laptop.specs,
+                      style: TextStyle(
+                          fontSize: 10, color: t.textSecondary, height: 1.45),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis),
                   const SizedBox(height: 12),
                   Container(
                     padding: const EdgeInsets.symmetric(
@@ -390,20 +385,14 @@ class _HomepageState extends State<Homepage> {
     );
   }
 
-  // ─── Payment ─────────────────────────────────────────────────────────────────
   Future<void> payNow(int price, String itemName) async {
     try {
       const url = "https://api.xendit.co/v2/invoices";
-      final auth =
-          'Basic ' + base64Encode(utf8.encode(_xenditKey));
-      final orderId =
-          "order_${DateTime.now().millisecondsSinceEpoch}";
+      final auth = 'Basic ' + base64Encode(utf8.encode(_xenditKey));
+      final orderId = "order_${DateTime.now().millisecondsSinceEpoch}";
       final response = await http.post(
         Uri.parse(url),
-        headers: {
-          "Authorization": auth,
-          "Content-Type": "application/json"
-        },
+        headers: {"Authorization": auth, "Content-Type": "application/json"},
         body: jsonEncode({
           "external_id": orderId,
           "amount": price,
@@ -424,8 +413,7 @@ class _HomepageState extends State<Homepage> {
       }
       await Navigator.push(
         context,
-        CupertinoPageRoute(
-            builder: (_) => PaymentPage(url: invoiceUrl)),
+        CupertinoPageRoute(builder: (_) => PaymentPage(url: invoiceUrl)),
       );
       paymentPolling(id, auth, itemName, orderId);
     } catch (e) {
@@ -450,79 +438,80 @@ class _HomepageState extends State<Homepage> {
   Future<void> paymentPolling(
       String id, String auth, String itemName, String orderId) async {
     pollingTimer?.cancel();
-    pollingTimer =
-        Timer.periodic(const Duration(seconds: 5), (timer) async {
-          try {
-            final response = await http.get(
-                Uri.parse("https://api.xendit.co/v2/invoices/$id"),
-                headers: {"Authorization": auth});
-            final data = jsonDecode(response.body);
-            final String status = data['status'];
-            if (mounted) setState(() => paymentStatus = status);
-            if (status == "PAID") {
-              timer.cancel();
-              pollingTimer = null;
-              await supabase.from('rider_locations').upsert({
-                'order_id': orderId,
-                'rider_name': 'Miguel Santos',
-                'rider_plate': 'TLG 8821',
-                'rider_rating': 4.8,
-                // ── NEW: use real GPS coords ──
-                'lat': _currentLatLng?.latitude ?? 15.4755,
-                'lng': _currentLatLng?.longitude ?? 120.5963,
-                'eta_minutes': 1,
-                'status': 'preparing',
-              });
-              if (mounted) {
-                setState(() => isPolling = false);
-                if (Navigator.canPop(context)) Navigator.pop(context);
-                Navigator.push(
-                  context,
-                  CupertinoPageRoute(
-                    builder: (_) => LocationPinPage(
-                      orderId: orderId,
-                      itemName: itemName,
-                      // ── NEW: pass real GPS to pin page ──
-                      initialLocation: _currentLatLng,
-                    ),
-                  ),
-                );
-              }
-            } else if (status == "EXPIRED" || status == "FAILED") {
-              timer.cancel();
-              pollingTimer = null;
-              if (mounted) setState(() => isPolling = false);
-              if (mounted && Navigator.canPop(context)) Navigator.pop(context);
-              if (mounted) {
-                showCupertinoDialog(
-                  context: context,
-                  builder: (_) => CupertinoAlertDialog(
-                    title: const Text("Order Failed"),
-                    content: const Text(
-                        "Payment not completed. Please try again."),
-                    actions: [
-                      CupertinoDialogAction(
-                          child: const Text("OK"),
-                          onPressed: () => Navigator.pop(context)),
-                    ],
-                  ),
-                );
-              }
-            }
-          } catch (e) {
-            debugPrint("Polling error: $e");
+    pollingTimer = Timer.periodic(const Duration(seconds: 5), (timer) async {
+      try {
+        final response = await http.get(
+            Uri.parse("https://api.xendit.co/v2/invoices/$id"),
+            headers: {"Authorization": auth});
+        final data = jsonDecode(response.body);
+        final String status = data['status'];
+        if (mounted) setState(() => paymentStatus = status);
+        if (status == "PAID") {
+          timer.cancel();
+          pollingTimer = null;
+
+          // ── Rider starts from Santa Ana, Pampanga ──
+          // ── ETA set to 1 minute (was 10) ──
+          await supabase.from('rider_locations').upsert({
+            'order_id': orderId,
+            'rider_name': 'Mark Fernandez',
+            'rider_plate': 'TLG 8821',
+            'rider_rating': 4.8,
+            'lat': kSantaAnaLat,
+            'lng': kSantaAnaLng,
+            'eta_minutes': 1,  // ← CHANGED: was 10, now 1
+            'status': 'preparing',
+          });
+
+          if (mounted) {
+            setState(() => isPolling = false);
+            if (Navigator.canPop(context)) Navigator.pop(context);
+            Navigator.push(
+              context,
+              CupertinoPageRoute(
+                builder: (_) => LocationPinPage(
+                  orderId: orderId,
+                  itemName: itemName,
+                  initialLocation: _currentLatLng,
+                  riderStartLat: kSantaAnaLat,
+                  riderStartLng: kSantaAnaLng,
+                ),
+              ),
+            );
           }
-        });
+        } else if (status == "EXPIRED" || status == "FAILED") {
+          timer.cancel();
+          pollingTimer = null;
+          if (mounted) setState(() => isPolling = false);
+          if (mounted && Navigator.canPop(context)) Navigator.pop(context);
+          if (mounted) {
+            showCupertinoDialog(
+              context: context,
+              builder: (_) => CupertinoAlertDialog(
+                title: const Text("Order Failed"),
+                content:
+                const Text("Payment not completed. Please try again."),
+                actions: [
+                  CupertinoDialogAction(
+                      child: const Text("OK"),
+                      onPressed: () => Navigator.pop(context)),
+                ],
+              ),
+            );
+          }
+        }
+      } catch (e) {
+        debugPrint("Polling error: $e");
+      }
+    });
   }
 
-  // ─── Build ───────────────────────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
     return ValueListenableBuilder(
       valueListenable: box.listenable(keys: ['isDark']),
       builder: (context, _, __) {
         final t = AppTheme(isDark: isDark);
-
         return CupertinoTabScaffold(
           tabBar: CupertinoTabBar(
             backgroundColor: t.navBar,
@@ -537,37 +526,30 @@ class _HomepageState extends State<Homepage> {
             items: const [
               BottomNavigationBarItem(
                 icon: Padding(
-                  padding: EdgeInsets.only(top: 6),
-                  child: Icon(CupertinoIcons.house_fill),
-                ),
+                    padding: EdgeInsets.only(top: 6),
+                    child: Icon(CupertinoIcons.house_fill)),
                 label: "Home",
               ),
               BottomNavigationBarItem(
                 icon: Padding(
-                  padding: EdgeInsets.only(top: 6),
-                  child: Icon(CupertinoIcons.cube_box_fill),
-                ),
+                    padding: EdgeInsets.only(top: 6),
+                    child: Icon(CupertinoIcons.cube_box_fill)),
                 label: "Orders",
               ),
               BottomNavigationBarItem(
                 icon: Padding(
-                  padding: EdgeInsets.only(top: 6),
-                  child: Icon(CupertinoIcons.gear_alt_fill),
-                ),
+                    padding: EdgeInsets.only(top: 6),
+                    child: Icon(CupertinoIcons.gear_alt_fill)),
                 label: "Settings",
               ),
             ],
           ),
           tabBuilder: (context, index) {
             switch (index) {
-              case 0:
-                return _buildHome(t);
-              case 1:
-                return const OrdersPage();
-              case 2:
-                return const Settings();
-              default:
-                return _buildHome(t);
+              case 0: return _buildHome(t);
+              case 1: return const OrdersPage();
+              case 2: return const Settings();
+              default: return _buildHome(t);
             }
           },
         );
@@ -575,14 +557,10 @@ class _HomepageState extends State<Homepage> {
     );
   }
 
-  // ─── Home tab content ────────────────────────────────────────────────────────
   Widget _buildHome(AppTheme t) {
-    final username =
-    box.get("username", defaultValue: "User") as String;
-
-    // ── NEW: fallback center if GPS not ready yet ──
+    final username = box.get("username", defaultValue: "User") as String;
     final LatLng mapCenter =
-        _currentLatLng ?? const LatLng(15.4755, 120.5963);
+        _currentLatLng ?? const LatLng(kSantaAnaLat, kSantaAnaLng);
 
     return CupertinoPageScaffold(
       backgroundColor: t.page,
@@ -596,33 +574,27 @@ class _HomepageState extends State<Homepage> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // ── Header ──────────────────────────────────────────────
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         Row(children: [
                           Container(
-                            width: 50,
-                            height: 50,
+                            width: 50, height: 50,
                             decoration: BoxDecoration(
                               gradient: const LinearGradient(
                                   colors: [kHighlight, kAccentMid]),
                               borderRadius: BorderRadius.circular(14),
-                              boxShadow: [
-                                BoxShadow(
-                                    color: kHighlight.withOpacity(0.4),
-                                    blurRadius: 10,
-                                    offset: const Offset(0, 4))
-                              ],
+                              boxShadow: [BoxShadow(
+                                  color: kHighlight.withOpacity(0.4),
+                                  blurRadius: 10,
+                                  offset: const Offset(0, 4))],
                             ),
                             child: Center(
-                              child: Text(
-                                username[0].toUpperCase(),
-                                style: const TextStyle(
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.w800,
-                                    fontSize: 20),
-                              ),
+                              child: Text(username[0].toUpperCase(),
+                                  style: const TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.w800,
+                                      fontSize: 20)),
                             ),
                           ),
                           const SizedBox(width: 12),
@@ -635,14 +607,12 @@ class _HomepageState extends State<Homepage> {
                                       fontSize: 11,
                                       fontWeight: FontWeight.w500)),
                               const SizedBox(height: 2),
-                              Text(
-                                username,
-                                style: TextStyle(
-                                    color: t.textPrimary,
-                                    fontWeight: FontWeight.w800,
-                                    fontSize: 18,
-                                    letterSpacing: -0.4),
-                              ),
+                              Text(username,
+                                  style: TextStyle(
+                                      color: t.textPrimary,
+                                      fontWeight: FontWeight.w800,
+                                      fontSize: 18,
+                                      letterSpacing: -0.4)),
                             ],
                           ),
                         ]),
@@ -660,9 +630,8 @@ class _HomepageState extends State<Homepage> {
                     ),
                     const SizedBox(height: 18),
 
-                    // ── Location bar — NOW REAL GPS ───────────────────────────
                     GestureDetector(
-                      onTap: _initLocation, // tap to refresh GPS
+                      onTap: _initLocation,
                       child: Container(
                         padding: const EdgeInsets.symmetric(
                             horizontal: 14, vertical: 12),
@@ -677,10 +646,8 @@ class _HomepageState extends State<Homepage> {
                             decoration: BoxDecoration(
                                 color: kHighlight,
                                 borderRadius: BorderRadius.circular(8)),
-                            child: const Icon(
-                                CupertinoIcons.location_fill,
-                                color: Colors.white,
-                                size: 13),
+                            child: const Icon(CupertinoIcons.location_fill,
+                                color: Colors.white, size: 13),
                           ),
                           const SizedBox(width: 10),
                           Expanded(
@@ -692,11 +659,9 @@ class _HomepageState extends State<Homepage> {
                                         fontSize: 10,
                                         color: t.textSecondary,
                                         fontWeight: FontWeight.w500)),
-                                // ── shows loading or real address ──
                                 _locationLoading
                                     ? Row(children: [
-                                  const CupertinoActivityIndicator(
-                                      radius: 7),
+                                  const CupertinoActivityIndicator(radius: 7),
                                   const SizedBox(width: 6),
                                   Text("Fetching GPS...",
                                       style: TextStyle(
@@ -704,15 +669,13 @@ class _HomepageState extends State<Homepage> {
                                           fontWeight: FontWeight.w600,
                                           color: t.textSecondary)),
                                 ])
-                                    : Text(
-                                  _locationLabel,
-                                  style: TextStyle(
-                                      fontSize: 13,
-                                      fontWeight: FontWeight.w700,
-                                      color: t.textPrimary),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
+                                    : Text(_locationLabel,
+                                    style: TextStyle(
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w700,
+                                        color: t.textPrimary),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis),
                               ],
                             ),
                           ),
@@ -720,42 +683,33 @@ class _HomepageState extends State<Homepage> {
                             _locationLoading
                                 ? CupertinoIcons.arrow_2_circlepath
                                 : CupertinoIcons.location,
-                            color: kHighlight,
-                            size: 16,
+                            color: kHighlight, size: 16,
                           ),
                         ]),
                       ),
                     ),
                     const SizedBox(height: 16),
 
-                    // ── Google Maps Mini-map — REAL GPS ───────────────────────
                     Container(
                       height: 200,
                       decoration: BoxDecoration(
                         borderRadius: BorderRadius.circular(20),
-                        boxShadow: [
-                          BoxShadow(
-                              color: kHighlight.withOpacity(0.15),
-                              blurRadius: 18,
-                              offset: const Offset(0, 6)),
-                        ],
+                        boxShadow: [BoxShadow(
+                            color: kHighlight.withOpacity(0.15),
+                            blurRadius: 18,
+                            offset: const Offset(0, 6))],
                       ),
                       child: ClipRRect(
                         borderRadius: BorderRadius.circular(20),
                         child: Stack(children: [
-                          // ── Real Google Map ──
                           GoogleMap(
-                            initialCameraPosition: CameraPosition(
-                              target: mapCenter,
-                              zoom: 15,
-                            ),
+                            initialCameraPosition:
+                            CameraPosition(target: mapCenter, zoom: 15),
                             onMapCreated: (c) {
                               _homeMapController = c;
                               if (_currentLatLng != null) {
-                                c.animateCamera(
-                                  CameraUpdate.newLatLngZoom(
-                                      _currentLatLng!, 15),
-                                );
+                                c.animateCamera(CameraUpdate.newLatLngZoom(
+                                    _currentLatLng!, 15));
                               }
                             },
                             myLocationEnabled: true,
@@ -764,79 +718,61 @@ class _HomepageState extends State<Homepage> {
                             mapToolbarEnabled: false,
                             compassEnabled: false,
                             mapType: MapType.normal,
-                            markers: _currentLatLng == null
-                                ? {}
-                                : {
+                            markers: _currentLatLng == null ? {} : {
                               Marker(
-                                markerId:
-                                const MarkerId('my_location'),
+                                markerId: const MarkerId('my_location'),
                                 position: _currentLatLng!,
-                                icon: BitmapDescriptor
-                                    .defaultMarkerWithHue(
+                                icon: BitmapDescriptor.defaultMarkerWithHue(
                                     BitmapDescriptor.hueAzure),
                                 infoWindow: InfoWindow(
-                                  title: 'You are here 📍',
-                                  snippet: _locationLabel,
-                                ),
+                                    title: 'You are here 📍',
+                                    snippet: _locationLabel),
                               ),
                             },
                           ),
-
-                          // ── Loading overlay ──
                           if (_locationLoading)
                             Container(
                               color: Colors.black.withOpacity(0.4),
-                              child: Center(
+                              child: const Center(
                                 child: Column(
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
-                                    const CupertinoActivityIndicator(
+                                    CupertinoActivityIndicator(
                                         color: Colors.white, radius: 14),
-                                    const SizedBox(height: 10),
-                                    const Text(
-                                      "Getting your location...",
-                                      style: TextStyle(
-                                          color: Colors.white,
-                                          fontSize: 13,
-                                          fontWeight: FontWeight.w600),
-                                    ),
+                                    SizedBox(height: 10),
+                                    Text("Getting your location...",
+                                        style: TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 13,
+                                            fontWeight: FontWeight.w600)),
                                   ],
                                 ),
                               ),
                             ),
-
-                          // ── Live GPS badge (bottom-left) ──
                           Positioned(
-                            bottom: 10,
-                            left: 10,
+                            bottom: 10, left: 10,
                             child: Container(
                               padding: const EdgeInsets.symmetric(
                                   horizontal: 10, vertical: 6),
                               decoration: BoxDecoration(
                                 color: Colors.white.withOpacity(0.92),
                                 borderRadius: BorderRadius.circular(10),
-                                boxShadow: [
-                                  BoxShadow(
-                                      color:
-                                      Colors.black.withOpacity(0.12),
-                                      blurRadius: 6)
-                                ],
+                                boxShadow: [BoxShadow(
+                                    color: Colors.black.withOpacity(0.12),
+                                    blurRadius: 6)],
                               ),
                               child: Row(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
                                   Container(
-                                    width: 7,
-                                    height: 7,
+                                    width: 7, height: 7,
                                     decoration: const BoxDecoration(
                                         color: Color(0xFF34A853),
                                         shape: BoxShape.circle),
                                   ),
                                   const SizedBox(width: 5),
                                   Text(
-                                    _locationLoading
-                                        ? "Locating..."
-                                        : "Live · GPS",
+                                    _locationLoading ? "Locating..." : "Live · GPS",
                                     style: const TextStyle(
                                         fontSize: 11,
                                         fontWeight: FontWeight.w700,
@@ -846,37 +782,27 @@ class _HomepageState extends State<Homepage> {
                               ),
                             ),
                           ),
-
-                          // ── Recenter button (bottom-right) ──
                           Positioned(
-                            bottom: 10,
-                            right: 10,
+                            bottom: 10, right: 10,
                             child: GestureDetector(
                               onTap: () {
                                 if (_currentLatLng != null) {
                                   _homeMapController?.animateCamera(
-                                    CameraUpdate.newLatLngZoom(
-                                        _currentLatLng!, 15),
-                                  );
+                                      CameraUpdate.newLatLngZoom(
+                                          _currentLatLng!, 15));
                                 }
                               },
                               child: Container(
-                                width: 38,
-                                height: 38,
+                                width: 38, height: 38,
                                 decoration: BoxDecoration(
                                   color: Colors.white,
                                   borderRadius: BorderRadius.circular(10),
-                                  boxShadow: [
-                                    BoxShadow(
-                                        color: Colors.black
-                                            .withOpacity(0.15),
-                                        blurRadius: 6)
-                                  ],
+                                  boxShadow: [BoxShadow(
+                                      color: Colors.black.withOpacity(0.15),
+                                      blurRadius: 6)],
                                 ),
-                                child: const Icon(
-                                    CupertinoIcons.location_fill,
-                                    color: kHighlight,
-                                    size: 18),
+                                child: const Icon(CupertinoIcons.location_fill,
+                                    color: kHighlight, size: 18),
                               ),
                             ),
                           ),
@@ -885,18 +811,15 @@ class _HomepageState extends State<Homepage> {
                     ),
                     const SizedBox(height: 20),
 
-                    // ── Hero banner ───────────────────────────────────────────
                     Container(
                       padding: const EdgeInsets.all(22),
                       decoration: BoxDecoration(
                         color: const Color(0xFF0A1628),
                         borderRadius: BorderRadius.circular(22),
-                        boxShadow: [
-                          BoxShadow(
-                              color: kHighlight.withOpacity(0.2),
-                              blurRadius: 24,
-                              offset: const Offset(0, 10))
-                        ],
+                        boxShadow: [BoxShadow(
+                            color: kHighlight.withOpacity(0.2),
+                            blurRadius: 24,
+                            offset: const Offset(0, 10))],
                       ),
                       child: Row(children: [
                         Expanded(
@@ -937,13 +860,11 @@ class _HomepageState extends State<Homepage> {
                             ],
                           ),
                         ),
-                        const Text('💻',
-                            style: TextStyle(fontSize: 64)),
+                        const Text('💻', style: TextStyle(fontSize: 64)),
                       ]),
                     ),
                     const SizedBox(height: 26),
 
-                    // ── Payment status banner ─────────────────────────────────
                     if (isPolling) ...[
                       Container(
                         padding: const EdgeInsets.symmetric(
@@ -969,8 +890,7 @@ class _HomepageState extends State<Homepage> {
                               paymentStatus == "PAID"
                                   ? CupertinoIcons.check_mark
                                   : CupertinoIcons.clock,
-                              color: Colors.white,
-                              size: 16,
+                              color: Colors.white, size: 16,
                             ),
                           ),
                           const SizedBox(width: 12),
@@ -984,15 +904,13 @@ class _HomepageState extends State<Homepage> {
                                         color: t.textSecondary,
                                         fontWeight: FontWeight.w500)),
                                 const SizedBox(height: 2),
-                                Text(
-                                  paymentStatus,
-                                  style: TextStyle(
-                                      fontSize: 17,
-                                      fontWeight: FontWeight.w700,
-                                      color: paymentStatus == "PAID"
-                                          ? const Color(0xFF00E676)
-                                          : kHighlight),
-                                ),
+                                Text(paymentStatus,
+                                    style: TextStyle(
+                                        fontSize: 17,
+                                        fontWeight: FontWeight.w700,
+                                        color: paymentStatus == "PAID"
+                                            ? const Color(0xFF00E676)
+                                            : kHighlight)),
                               ],
                             ),
                           ),
@@ -1004,7 +922,6 @@ class _HomepageState extends State<Homepage> {
                       const SizedBox(height: 26),
                     ],
 
-                    // ── Section header ────────────────────────────────────────
                     Text('🖥️ Gaming Laptops',
                         style: TextStyle(
                             fontSize: 19,
@@ -1022,8 +939,6 @@ class _HomepageState extends State<Homepage> {
                 ),
               ),
             ),
-
-            // ── Laptop horizontal list ───────────────────────────────────────
             SliverToBoxAdapter(
               child: SingleChildScrollView(
                 scrollDirection: Axis.horizontal,
@@ -1036,7 +951,6 @@ class _HomepageState extends State<Homepage> {
                 ),
               ),
             ),
-
             const SliverToBoxAdapter(child: SizedBox(height: 36)),
           ],
         ),
@@ -1069,7 +983,6 @@ class _PaymentPageState extends State<PaymentPage> {
   Widget build(BuildContext context) {
     final box = Hive.box("database");
     final t = AppTheme(isDark: box.get("isDark", defaultValue: false));
-
     return CupertinoPageScaffold(
       backgroundColor: t.page,
       navigationBar: CupertinoNavigationBar(
@@ -1086,8 +999,7 @@ class _PaymentPageState extends State<PaymentPage> {
               context: context,
               builder: (_) => CupertinoAlertDialog(
                 title: const Text("Cancel Order?"),
-                content:
-                const Text("Are you sure you want to cancel?"),
+                content: const Text("Are you sure you want to cancel?"),
                 actions: [
                   CupertinoDialogAction(
                       child: const Text("No"),
@@ -1114,14 +1026,17 @@ class _PaymentPageState extends State<PaymentPage> {
 class LocationPinPage extends StatefulWidget {
   final String orderId;
   final String itemName;
-  // ── NEW: accepts real GPS from Homepage ──
   final LatLng? initialLocation;
+  final double riderStartLat;
+  final double riderStartLng;
 
   const LocationPinPage({
     super.key,
     required this.orderId,
     required this.itemName,
     this.initialLocation,
+    required this.riderStartLat,
+    required this.riderStartLng,
   });
 
   @override
@@ -1129,7 +1044,6 @@ class LocationPinPage extends StatefulWidget {
 }
 
 class _LocationPinPageState extends State<LocationPinPage> {
-  // ── NEW: starts at real GPS, fallback to Tarlac City ──
   late LatLng _pinLocation;
   GoogleMapController? _mapController;
   Set<Marker> _markers = {};
@@ -1137,19 +1051,20 @@ class _LocationPinPageState extends State<LocationPinPage> {
   @override
   void initState() {
     super.initState();
-    _pinLocation =
-        widget.initialLocation ?? const LatLng(15.4755, 120.5963);
+    _pinLocation = widget.initialLocation ??
+        LatLng(widget.riderStartLat, widget.riderStartLng);
+    _updateMarker();
+  }
+
+  void _updateMarker() {
     _markers = {
       Marker(
         markerId: const MarkerId('delivery'),
         position: _pinLocation,
         draggable: true,
-        icon: BitmapDescriptor.defaultMarkerWithHue(
-            BitmapDescriptor.hueGreen),
-        infoWindow:
-        const InfoWindow(title: 'Delivery Location'),
-        onDragEnd: (newPos) =>
-            setState(() => _pinLocation = newPos),
+        icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen),
+        infoWindow: const InfoWindow(title: 'Delivery Location'),
+        onDragEnd: (newPos) => setState(() => _pinLocation = newPos),
       ),
     };
   }
@@ -1157,20 +1072,24 @@ class _LocationPinPageState extends State<LocationPinPage> {
   void _onMapTap(LatLng pos) {
     setState(() {
       _pinLocation = pos;
-      _markers = {
-        Marker(
-          markerId: const MarkerId('delivery'),
-          position: _pinLocation,
-          draggable: true,
-          icon: BitmapDescriptor.defaultMarkerWithHue(
-              BitmapDescriptor.hueGreen),
-          infoWindow:
-          const InfoWindow(title: 'Delivery Location'),
-          onDragEnd: (newPos) =>
-              setState(() => _pinLocation = newPos),
-        ),
-      };
+      _updateMarker();
     });
+  }
+
+  int _latToGridRow(double lat) {
+    const int kRows = 12;
+    const double latStep = 0.002;
+    return ((widget.riderStartLat + (kRows - 1) * latStep - lat) / latStep)
+        .round()
+        .clamp(0, kRows - 1);
+  }
+
+  int _lngToGridCol(double lng) {
+    const int kCols = 10;
+    const double lngStep = 0.002;
+    return ((lng - widget.riderStartLng) / lngStep)
+        .round()
+        .clamp(0, kCols - 1);
   }
 
   @override
@@ -1178,22 +1097,8 @@ class _LocationPinPageState extends State<LocationPinPage> {
     final box = Hive.box("database");
     final t = AppTheme(isDark: box.get("isDark", defaultValue: false));
 
-    const double baseLat = 15.4730;
-    const double baseLng = 120.5930;
-    const double latStep = 0.002;
-    const double lngStep = 0.002;
-    const int kRows = 12;
-    const int kCols = 10;
-
-    final int gridRow =
-    ((baseLat + (kRows - 1) * latStep - _pinLocation.latitude) /
-        latStep)
-        .round()
-        .clamp(0, kRows - 1);
-    final int gridCol =
-    ((_pinLocation.longitude - baseLng) / lngStep)
-        .round()
-        .clamp(0, kCols - 1);
+    final int gridRow = _latToGridRow(_pinLocation.latitude);
+    final int gridCol = _lngToGridCol(_pinLocation.longitude);
 
     return CupertinoPageScaffold(
       backgroundColor: t.page,
@@ -1211,7 +1116,6 @@ class _LocationPinPageState extends State<LocationPinPage> {
       ),
       child: SafeArea(
         child: Column(children: [
-          // Info card
           Container(
             margin: const EdgeInsets.all(16),
             padding: const EdgeInsets.all(16),
@@ -1234,8 +1138,7 @@ class _LocationPinPageState extends State<LocationPinPage> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                        "Tap map or drag pin to set delivery location",
+                    Text("Tap map or drag pin to set delivery location",
                         style: TextStyle(
                             fontSize: 13,
                             fontWeight: FontWeight.w700,
@@ -1243,32 +1146,28 @@ class _LocationPinPageState extends State<LocationPinPage> {
                     const SizedBox(height: 2),
                     Text(
                         "Lat: ${_pinLocation.latitude.toStringAsFixed(4)}  Lng: ${_pinLocation.longitude.toStringAsFixed(4)}",
-                        style: TextStyle(
-                            fontSize: 11, color: t.textSecondary)),
+                        style:
+                        TextStyle(fontSize: 11, color: t.textSecondary)),
                   ],
                 ),
               ),
             ]),
           ),
-
-          // Google Map — starts at real GPS location
           Expanded(
             child: Container(
               margin: const EdgeInsets.symmetric(horizontal: 16),
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(20),
-                boxShadow: [
-                  BoxShadow(
-                      color: kHighlight.withOpacity(0.15),
-                      blurRadius: 16,
-                      offset: const Offset(0, 6))
-                ],
+                boxShadow: [BoxShadow(
+                    color: kHighlight.withOpacity(0.15),
+                    blurRadius: 16,
+                    offset: const Offset(0, 6))],
               ),
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(20),
                 child: GoogleMap(
-                  initialCameraPosition: CameraPosition(
-                      target: _pinLocation, zoom: 15),
+                  initialCameraPosition:
+                  CameraPosition(target: _pinLocation, zoom: 15),
                   onMapCreated: (c) => _mapController = c,
                   onTap: _onMapTap,
                   markers: _markers,
@@ -1279,8 +1178,6 @@ class _LocationPinPageState extends State<LocationPinPage> {
               ),
             ),
           ),
-
-          // Confirm button
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 14, 16, 20),
             child: Column(children: [
@@ -1323,12 +1220,13 @@ class _LocationPinPageState extends State<LocationPinPage> {
                           destGridCol: gridCol,
                           destLat: _pinLocation.latitude,
                           destLng: _pinLocation.longitude,
+                          riderStartLat: widget.riderStartLat,
+                          riderStartLng: widget.riderStartLng,
                         ),
                       ),
                     );
                   },
-                  child: const Text(
-                      "Confirm Location & Track Order 🛵",
+                  child: const Text("Confirm Location & Track Order 🛵",
                       style: TextStyle(
                           fontWeight: FontWeight.w700, fontSize: 15)),
                 ),
@@ -1346,6 +1244,8 @@ class RiderTrackerPage extends StatefulWidget {
   final String orderId, itemName;
   final int destGridRow, destGridCol;
   final double destLat, destLng;
+  final double riderStartLat;
+  final double riderStartLng;
 
   const RiderTrackerPage({
     super.key,
@@ -1355,17 +1255,31 @@ class RiderTrackerPage extends StatefulWidget {
     required this.destGridCol,
     required this.destLat,
     required this.destLng,
+    required this.riderStartLat,
+    required this.riderStartLng,
   });
 
   @override
   State<RiderTrackerPage> createState() => _RiderTrackerPageState();
 }
 
-class _RiderTrackerPageState extends State<RiderTrackerPage> {
+class _RiderTrackerPageState extends State<RiderTrackerPage>
+    with SingleTickerProviderStateMixin {
   static const int kRows = 12, kCols = 10;
   static const (int, int) kRiderStart = (9, 2);
-  static const double _baseLat = 15.4730, _baseLng = 120.5930;
   static const double _latStep = 0.002, _lngStep = 0.002;
+
+  // ─── ANIMATION: smooth interpolation between grid cells ───────────────────
+  late AnimationController _animController;
+  late Animation<double> _animValue;
+
+  // The current animated LatLng of the rider (interpolated between cells)
+  LatLng _animatedRiderLatLng = const LatLng(0, 0);
+
+  LatLng _gridToLatLng(int row, int col) => LatLng(
+    widget.riderStartLat + (kRows - 1 - row) * _latStep,
+    widget.riderStartLng + col * _lngStep,
+  );
 
   Set<(int, int)> get _walls {
     final w = <(int, int)>{};
@@ -1375,13 +1289,12 @@ class _RiderTrackerPageState extends State<RiderTrackerPage> {
     return w;
   }
 
-  LatLng _gridToLatLng(int row, int col) => LatLng(
-    _baseLat + (kRows - 1 - row) * _latStep,
-    _baseLng + col * _lngStep,
-  );
-
   late List<(int, int)> _path;
   int _pathIndex = 0;
+
+  // Previous cell for interpolation
+  LatLng _prevRiderLatLng = const LatLng(0, 0);
+  LatLng _nextRiderLatLng = const LatLng(0, 0);
 
   (int, int) get _riderCell =>
       _pathIndex < _path.length ? _path[_pathIndex] : _path.last;
@@ -1405,23 +1318,42 @@ class _RiderTrackerPageState extends State<RiderTrackerPage> {
   StreamSubscription? _subscription;
   Timer? _moveTimer, _countdownTimer, _statusAutoTimer;
 
+  // ─── Total delivery = 60 seconds (1 minute) ───────────────────────────────
+  // Path has N steps. We want all steps done in ~60 seconds.
+  // Step interval = 60000ms / max(N-1, 1).
+  // We compute this dynamically once path is ready.
+  int get _stepIntervalMs {
+    final steps = (_path.length - 1).clamp(1, 999);
+    return (60000 / steps).round(); // ← 1 minute total
+  }
+
+  // Smooth animation duration per step
+  Duration get _animDuration =>
+      Duration(milliseconds: (_stepIntervalMs * 0.85).round());
+
   final List<Map<String, String>> _steps = [
     {"title": "Order Confirmed", "sub": "We received your order 💻"},
     {"title": "Packing Items", "sub": "Your laptop is being packed 📦"},
-    {
-      "title": "Courier On the Way",
-      "sub": "Courier picked up your package 🛵"
-    },
-    {
-      "title": "Almost There!",
-      "sub": "Courier is nearby your location 📍"
-    },
+    {"title": "Courier On the Way", "sub": "Courier picked up your package 🛵"},
+    {"title": "Almost There!", "sub": "Courier is nearby your location 📍"},
     {"title": "Delivered! 🎉", "sub": "Enjoy your new laptop!"},
   ];
 
   @override
   void initState() {
     super.initState();
+
+    // ─── Init smooth animation controller ───────────────────────────────────
+    _animController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 700),
+    );
+    _animValue = CurvedAnimation(
+      parent: _animController,
+      curve: Curves.easeInOut,
+    );
+    _animValue.addListener(_onAnimTick);
+
     _path = aStarPath(
       rows: kRows,
       cols: kCols,
@@ -1430,6 +1362,12 @@ class _RiderTrackerPageState extends State<RiderTrackerPage> {
       walls: _walls,
     );
     if (_path.isEmpty) _path = [kRiderStart];
+
+    // Set initial positions
+    _animatedRiderLatLng = _gridToLatLng(_riderCell.$1, _riderCell.$2);
+    _prevRiderLatLng = _animatedRiderLatLng;
+    _nextRiderLatLng = _animatedRiderLatLng;
+
     _updateMapElements();
     _listenToCourierAPI();
     _startRiderMovement();
@@ -1439,6 +1377,7 @@ class _RiderTrackerPageState extends State<RiderTrackerPage> {
 
   @override
   void dispose() {
+    _animController.dispose();
     _subscription?.cancel();
     _moveTimer?.cancel();
     _countdownTimer?.cancel();
@@ -1446,9 +1385,34 @@ class _RiderTrackerPageState extends State<RiderTrackerPage> {
     super.dispose();
   }
 
+  // ─── Called every animation frame to interpolate rider position ───────────
+  void _onAnimTick() {
+    if (!mounted) return;
+    final t = _animValue.value;
+    final lat = _prevRiderLatLng.latitude +
+        (_nextRiderLatLng.latitude - _prevRiderLatLng.latitude) * t;
+    final lng = _prevRiderLatLng.longitude +
+        (_nextRiderLatLng.longitude - _prevRiderLatLng.longitude) * t;
+    setState(() {
+      _animatedRiderLatLng = LatLng(lat, lng);
+      _updateMapElements();
+    });
+  }
+
+  // ─── Trigger smooth move to next cell ────────────────────────────────────
+  void _animateToNextCell() {
+    _prevRiderLatLng = _animatedRiderLatLng;
+    _nextRiderLatLng = _gridToLatLng(_riderCell.$1, _riderCell.$2);
+    _animController.duration = _animDuration;
+    _animController.forward(from: 0);
+
+    // Keep camera following rider smoothly
+    _mapController?.animateCamera(
+      CameraUpdate.newLatLng(_nextRiderLatLng),
+    );
+  }
+
   void _updateMapElements() {
-    final riderLatLng =
-    _gridToLatLng(_riderCell.$1, _riderCell.$2);
     final destLatLng = LatLng(widget.destLat, widget.destLng);
 
     final pastPoints = _path
@@ -1481,35 +1445,33 @@ class _RiderTrackerPageState extends State<RiderTrackerPage> {
     _markers = {
       Marker(
         markerId: const MarkerId('rider'),
-        position: riderLatLng,
-        icon: BitmapDescriptor.defaultMarkerWithHue(
-            BitmapDescriptor.hueGreen),
-        infoWindow: InfoWindow(
-            title: _riderName, snippet: 'Your rider 🛵'),
+        position: _animatedRiderLatLng, // ← Uses animated/interpolated position
+        icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen),
+        infoWindow: InfoWindow(title: _riderName, snippet: 'Your rider 🛵'),
+        flat: true,
+        anchor: const Offset(0.5, 0.5),
       ),
       Marker(
         markerId: const MarkerId('dest'),
         position: destLatLng,
-        icon: BitmapDescriptor.defaultMarkerWithHue(
-            BitmapDescriptor.hueAzure),
+        icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueAzure),
         infoWindow: const InfoWindow(
-            title: 'Delivery Location',
-            snippet: 'Your address 📍'),
+            title: 'Delivery Location', snippet: 'Your address 📍'),
       ),
     };
   }
 
+  // ─── Status auto-update: after 6s move from 'preparing' → 'on_the_way' ───
   void _scheduleStatusAutoUpdate() {
-    _statusAutoTimer =
-        Timer(const Duration(minutes: 1), () async {
-          if (!mounted || _isDelivered) return;
-          if (_status == 'preparing') {
-            await supabase
-                .from('rider_locations')
-                .update({'status': 'on_the_way'}).eq(
-                'order_id', widget.orderId);
-          }
-        });
+    // Changed from 1 minute → 6 seconds (fits within the 1-min delivery)
+    _statusAutoTimer = Timer(const Duration(seconds: 6), () async {
+      if (!mounted || _isDelivered) return;
+      if (_status == 'preparing') {
+        await supabase
+            .from('rider_locations')
+            .update({'status': 'on_the_way'}).eq('order_id', widget.orderId);
+      }
+    });
   }
 
   void _listenToCourierAPI() {
@@ -1528,27 +1490,19 @@ class _RiderTrackerPageState extends State<RiderTrackerPage> {
         _isLoading = false;
         _riderName = row['rider_name'] ?? 'Unknown';
         _riderPlate = row['rider_plate'] ?? '---';
-        _riderRating =
-            (row['rider_rating'] ?? 0.0).toDouble();
+        _riderRating = (row['rider_rating'] ?? 0.0).toDouble();
         _etaMinutes = row['eta_minutes'] ?? 0;
         _status = row['status'] ?? 'preparing';
         switch (_status) {
-          case 'confirmed':
-            _statusStep = 0;
-            break;
-          case 'preparing':
-            _statusStep = 1;
-            break;
-          case 'on_the_way':
-            _statusStep = 2;
-            break;
-          case 'nearby':
-            _statusStep = 3;
-            break;
+          case 'confirmed': _statusStep = 0; break;
+          case 'preparing': _statusStep = 1; break;
+          case 'on_the_way': _statusStep = 2; break;
+          case 'nearby': _statusStep = 3; break;
           case 'delivered':
             _statusStep = 4;
             _isDelivered = true;
             _moveTimer?.cancel();
+            _animController.stop();
             break;
         }
         _updateMapElements();
@@ -1557,52 +1511,58 @@ class _RiderTrackerPageState extends State<RiderTrackerPage> {
   }
 
   void _startRiderMovement() {
+    // ─── Dynamic interval: total 60s / number of path steps ─────────────────
+    final intervalMs = _stepIntervalMs;
+
     _moveTimer = Timer.periodic(
-        const Duration(milliseconds: 900), (timer) {
-      if (!mounted || _isDelivered) return;
-      if (_pathIndex < _path.length - 1) {
-        setState(() {
-          _pathIndex++;
-          _updateMapElements();
-        });
-        if (_mapController != null) {
-          final riderLatLng =
-          _gridToLatLng(_riderCell.$1, _riderCell.$2);
-          _mapController!
-              .animateCamera(CameraUpdate.newLatLng(riderLatLng));
+      Duration(milliseconds: intervalMs),
+          (timer) {
+        if (!mounted || _isDelivered) return;
+        if (_pathIndex < _path.length - 1) {
+          setState(() {
+            _pathIndex++;
+          });
+          _animateToNextCell(); // ← Triggers smooth animation
+        } else {
+          timer.cancel();
+          if (!_isDelivered) {
+            supabase.from('rider_locations').update(
+                {'status': 'delivered', 'eta_minutes': 0}).eq(
+                'order_id', widget.orderId);
+          }
         }
-      } else {
-        timer.cancel();
-        if (!_isDelivered) {
-          supabase.from('rider_locations').update(
-              {'status': 'delivered', 'eta_minutes': 0}).eq(
-              'order_id', widget.orderId);
-        }
-      }
-    });
+      },
+    );
   }
 
   void _startCountdown() {
-    _countdownTimer = Timer.periodic(
-        const Duration(seconds: 10), (timer) async {
+    // ─── 1 minute = 60 seconds. Decrement every 6s (10 ticks = 1 min) ───────
+    // ETA starts at 1 (minute). We update it in seconds-based fashion:
+    // Every 6s we decrement. We'll track seconds internally.
+    int secondsLeft = 60;
+
+    _countdownTimer = Timer.periodic(const Duration(seconds: 6), (timer) async {
       if (!mounted || _isDelivered) {
         timer.cancel();
         return;
       }
-      final newEta = _etaMinutes - 1;
-      if (newEta <= 0) {
+      secondsLeft -= 6;
+      final minutesLeft = (secondsLeft / 60).ceil().clamp(0, 1);
+
+      if (secondsLeft <= 0) {
         timer.cancel();
         await supabase.from('rider_locations').update(
             {'eta_minutes': 0, 'status': 'delivered'}).eq(
             'order_id', widget.orderId);
       } else {
-        String newStatus = newEta <= 5
+        // Switch to 'nearby' in last 18 seconds, 'on_the_way' before that
+        String newStatus = secondsLeft <= 18
             ? 'nearby'
-            : newEta <= 15
+            : secondsLeft <= 42
             ? 'on_the_way'
             : _status;
         await supabase.from('rider_locations').update({
-          'eta_minutes': newEta,
+          'eta_minutes': minutesLeft,
           'status': newStatus,
         }).eq('order_id', widget.orderId);
       }
@@ -1614,8 +1574,7 @@ class _RiderTrackerPageState extends State<RiderTrackerPage> {
     return ValueListenableBuilder(
       valueListenable: box.listenable(keys: ['isDark']),
       builder: (context, _, __) {
-        final t = AppTheme(
-            isDark: box.get("isDark", defaultValue: false));
+        final t = AppTheme(isDark: box.get("isDark", defaultValue: false));
 
         if (_isLoading) {
           return CupertinoPageScaffold(
@@ -1643,12 +1602,10 @@ class _RiderTrackerPageState extends State<RiderTrackerPage> {
         return CupertinoPageScaffold(
           backgroundColor: t.page,
           child: Stack(children: [
-            // ── Full screen Google Map ──
             Positioned.fill(
               child: GoogleMap(
                 initialCameraPosition: CameraPosition(
-                    target: _gridToLatLng(
-                        _riderCell.$1, _riderCell.$2),
+                    target: _animatedRiderLatLng,
                     zoom: 15),
                 onMapCreated: (c) => _mapController = c,
                 markers: _markers,
@@ -1660,31 +1617,23 @@ class _RiderTrackerPageState extends State<RiderTrackerPage> {
               ),
             ),
 
-            // ── Top bar ──
             Positioned(
-              top: 0,
-              left: 0,
-              right: 0,
+              top: 0, left: 0, right: 0,
               child: SafeArea(
                 child: Padding(
-                  padding:
-                  const EdgeInsets.fromLTRB(12, 8, 12, 0),
+                  padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
                   child: Row(children: [
                     CupertinoButton(
                       padding: EdgeInsets.zero,
                       onPressed: () => Navigator.pop(context),
                       child: Container(
-                        width: 42,
-                        height: 42,
+                        width: 42, height: 42,
                         decoration: BoxDecoration(
                           color: Colors.white,
                           shape: BoxShape.circle,
-                          boxShadow: [
-                            BoxShadow(
-                                color: Colors.black
-                                    .withOpacity(0.2),
-                                blurRadius: 8)
-                          ],
+                          boxShadow: [BoxShadow(
+                              color: Colors.black.withOpacity(0.2),
+                              blurRadius: 8)],
                         ),
                         child: const Icon(CupertinoIcons.back,
                             color: Colors.black87, size: 20),
@@ -1698,33 +1647,28 @@ class _RiderTrackerPageState extends State<RiderTrackerPage> {
                         decoration: BoxDecoration(
                           color: Colors.white,
                           borderRadius: BorderRadius.circular(12),
-                          boxShadow: [
-                            BoxShadow(
-                                color: Colors.black
-                                    .withOpacity(0.15),
-                                blurRadius: 10)
-                          ],
+                          boxShadow: [BoxShadow(
+                              color: Colors.black.withOpacity(0.15),
+                              blurRadius: 10)],
                         ),
                         child: Row(children: [
-                          const Icon(
-                              CupertinoIcons.location_solid,
-                              color: Color(0xFF34A853),
-                              size: 14),
+                          const Icon(CupertinoIcons.location_solid,
+                              color: Color(0xFF34A853), size: 14),
                           const SizedBox(width: 8),
                           Expanded(
                             child: Column(
-                              crossAxisAlignment:
-                              CrossAxisAlignment.start,
-                              children: const [
-                                Text("Tarlac City, Central Luzon",
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  "${widget.destLat.toStringAsFixed(4)}, ${widget.destLng.toStringAsFixed(4)}",
+                                  style: const TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w700,
+                                      color: Colors.black87),
+                                ),
+                                const Text("Delivery destination",
                                     style: TextStyle(
-                                        fontSize: 13,
-                                        fontWeight: FontWeight.w700,
-                                        color: Colors.black87)),
-                                Text("Delivery destination",
-                                    style: TextStyle(
-                                        fontSize: 10,
-                                        color: Colors.grey)),
+                                        fontSize: 10, color: Colors.grey)),
                               ],
                             ),
                           ),
@@ -1736,32 +1680,24 @@ class _RiderTrackerPageState extends State<RiderTrackerPage> {
               ),
             ),
 
-            // ── LIVE badge ──
             Positioned(
-              top: 110,
-              right: 12,
+              top: 110, right: 12,
               child: Container(
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 10, vertical: 6),
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                 decoration: BoxDecoration(
                   color: const Color(0xFFEA4335),
                   borderRadius: BorderRadius.circular(20),
-                  boxShadow: [
-                    BoxShadow(
-                        color: const Color(0xFFEA4335)
-                            .withOpacity(0.4),
-                        blurRadius: 8)
-                  ],
+                  boxShadow: [BoxShadow(
+                      color: const Color(0xFFEA4335).withOpacity(0.4),
+                      blurRadius: 8)],
                 ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Container(
-                        width: 6,
-                        height: 6,
+                        width: 6, height: 6,
                         decoration: const BoxDecoration(
-                            color: Colors.white,
-                            shape: BoxShape.circle)),
+                            color: Colors.white, shape: BoxShape.circle)),
                     const SizedBox(width: 4),
                     const Text('LIVE',
                         style: TextStyle(
@@ -1774,13 +1710,10 @@ class _RiderTrackerPageState extends State<RiderTrackerPage> {
               ),
             ),
 
-            // ── A* badge ──
             Positioned(
-              bottom: 330,
-              left: 12,
+              bottom: 330, left: 12,
               child: Container(
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 10, vertical: 5),
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                 decoration: BoxDecoration(
                     color: const Color(0xFF34A853).withOpacity(0.9),
                     borderRadius: BorderRadius.circular(8)),
@@ -1793,21 +1726,15 @@ class _RiderTrackerPageState extends State<RiderTrackerPage> {
               ),
             ),
 
-            // ── Steps left badge ──
             Positioned(
-              bottom: 330,
-              right: 12,
+              bottom: 330, right: 12,
               child: Container(
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 10, vertical: 5),
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                 decoration: BoxDecoration(
                   color: Colors.white.withOpacity(0.95),
                   borderRadius: BorderRadius.circular(8),
-                  boxShadow: [
-                    BoxShadow(
-                        color: Colors.black.withOpacity(0.1),
-                        blurRadius: 4)
-                  ],
+                  boxShadow: [BoxShadow(
+                      color: Colors.black.withOpacity(0.1), blurRadius: 4)],
                 ),
                 child: Text(
                   '${(_path.length - 1 - _pathIndex).clamp(0, 999)} steps left',
@@ -1819,61 +1746,45 @@ class _RiderTrackerPageState extends State<RiderTrackerPage> {
               ),
             ),
 
-            // ── Bottom Sheet ──
             Positioned(
-              bottom: 0,
-              left: 0,
-              right: 0,
+              bottom: 0, left: 0, right: 0,
               child: Container(
                 decoration: BoxDecoration(
                   color: t.page,
-                  borderRadius: const BorderRadius.vertical(
-                      top: Radius.circular(24)),
-                  boxShadow: [
-                    BoxShadow(
-                        color: Colors.black.withOpacity(0.15),
-                        blurRadius: 20,
-                        offset: const Offset(0, -4))
-                  ],
+                  borderRadius:
+                  const BorderRadius.vertical(top: Radius.circular(24)),
+                  boxShadow: [BoxShadow(
+                      color: Colors.black.withOpacity(0.15),
+                      blurRadius: 20,
+                      offset: const Offset(0, -4))],
                 ),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    // Handle
                     Padding(
-                      padding:
-                      const EdgeInsets.only(top: 10, bottom: 6),
+                      padding: const EdgeInsets.only(top: 10, bottom: 6),
                       child: Container(
-                          width: 36,
-                          height: 4,
+                          width: 36, height: 4,
                           decoration: BoxDecoration(
                               color: t.border,
-                              borderRadius:
-                              BorderRadius.circular(2))),
+                              borderRadius: BorderRadius.circular(2))),
                     ),
 
-                    // Arriving banner
                     Container(
-                      padding:
-                      const EdgeInsets.fromLTRB(20, 8, 20, 12),
+                      padding: const EdgeInsets.fromLTRB(20, 8, 20, 12),
                       child: Row(children: [
                         Expanded(
                           child: Column(
-                            crossAxisAlignment:
-                            CrossAxisAlignment.start,
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                  _isDelivered
-                                      ? "Delivered! 🎉"
-                                      : "Arriving in",
+                                  _isDelivered ? "Delivered! 🎉" : "Arriving in",
                                   style: TextStyle(
                                       color: t.textSecondary,
                                       fontSize: 12,
                                       fontWeight: FontWeight.w500)),
                               Text(
-                                _isDelivered
-                                    ? "🎉"
-                                    : "$_etaMinutes min",
+                                _isDelivered ? "🎉" : "$_etaMinutes min",
                                 style: const TextStyle(
                                     color: Color(0xFF1a73e8),
                                     fontSize: 30,
@@ -1888,15 +1799,28 @@ class _RiderTrackerPageState extends State<RiderTrackerPage> {
                             ],
                           ),
                         ),
-                        Text(_isDelivered ? '🎉' : '🛵',
-                            style: const TextStyle(fontSize: 42)),
+                        // ─── Animated rider emoji that bounces ────────────
+                        AnimatedBuilder(
+                          animation: _animController,
+                          builder: (_, __) {
+                            final bounce = _isDelivered
+                                ? 0.0
+                                : (1.0 - (_animValue.value - 0.5).abs() * 2)
+                                .clamp(0.0, 1.0) *
+                                6;
+                            return Transform.translate(
+                              offset: Offset(0, -bounce),
+                              child: Text(
+                                  _isDelivered ? '🎉' : '🛵',
+                                  style: const TextStyle(fontSize: 42)),
+                            );
+                          },
+                        ),
                       ]),
                     ),
 
-                    // Courier row
                     Container(
-                      margin:
-                      const EdgeInsets.fromLTRB(12, 0, 12, 10),
+                      margin: const EdgeInsets.fromLTRB(12, 0, 12, 10),
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
                           color: t.card,
@@ -1904,20 +1828,15 @@ class _RiderTrackerPageState extends State<RiderTrackerPage> {
                           border: Border.all(color: t.border)),
                       child: Row(children: [
                         Container(
-                          width: 44,
-                          height: 44,
+                          width: 44, height: 44,
                           decoration: BoxDecoration(
-                            gradient: const LinearGradient(colors: [
-                              Color(0xFF34A853),
-                              Color(0xFF1a7a3a)
-                            ]),
+                            gradient: const LinearGradient(
+                                colors: [Color(0xFF34A853), Color(0xFF1a7a3a)]),
                             borderRadius: BorderRadius.circular(22),
                           ),
                           child: Center(
                             child: Text(
-                              _riderName.isNotEmpty
-                                  ? _riderName[0]
-                                  : '?',
+                              _riderName.isNotEmpty ? _riderName[0] : '?',
                               style: const TextStyle(
                                   color: Colors.white,
                                   fontSize: 18,
@@ -1928,8 +1847,7 @@ class _RiderTrackerPageState extends State<RiderTrackerPage> {
                         const SizedBox(width: 10),
                         Expanded(
                           child: Column(
-                            crossAxisAlignment:
-                            CrossAxisAlignment.start,
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(_riderName,
                                   style: TextStyle(
@@ -1938,11 +1856,9 @@ class _RiderTrackerPageState extends State<RiderTrackerPage> {
                                       color: t.textPrimary)),
                               Row(children: [
                                 const Icon(CupertinoIcons.star_fill,
-                                    size: 11,
-                                    color: Color(0xFFFFC107)),
+                                    size: 11, color: Color(0xFFFFC107)),
                                 const SizedBox(width: 4),
-                                Text(
-                                    '$_riderRating · $_riderPlate',
+                                Text('$_riderRating · $_riderPlate',
                                     style: TextStyle(
                                         fontSize: 10,
                                         color: t.textSecondary)),
@@ -1959,32 +1875,24 @@ class _RiderTrackerPageState extends State<RiderTrackerPage> {
                           padding: const EdgeInsets.all(9),
                           decoration: BoxDecoration(
                               color: const Color(0xFFe8f5e9),
-                              borderRadius:
-                              BorderRadius.circular(20)),
-                          child: const Icon(
-                              CupertinoIcons.phone_fill,
-                              color: Color(0xFF34A853),
-                              size: 15),
+                              borderRadius: BorderRadius.circular(20)),
+                          child: const Icon(CupertinoIcons.phone_fill,
+                              color: Color(0xFF34A853), size: 15),
                         ),
                         const SizedBox(width: 6),
                         Container(
                           padding: const EdgeInsets.all(9),
                           decoration: BoxDecoration(
                               color: const Color(0xFFe3f2fd),
-                              borderRadius:
-                              BorderRadius.circular(20)),
-                          child: const Icon(
-                              CupertinoIcons.chat_bubble_fill,
-                              color: Color(0xFF1a73e8),
-                              size: 15),
+                              borderRadius: BorderRadius.circular(20)),
+                          child: const Icon(CupertinoIcons.chat_bubble_fill,
+                              color: Color(0xFF1a73e8), size: 15),
                         ),
                       ]),
                     ),
 
-                    // Status steps
                     Container(
-                      margin:
-                      const EdgeInsets.fromLTRB(12, 0, 12, 12),
+                      margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
                       padding: const EdgeInsets.all(14),
                       decoration: BoxDecoration(
                           color: t.card,
@@ -2003,13 +1911,13 @@ class _RiderTrackerPageState extends State<RiderTrackerPage> {
                             final isActive = _statusStep >= i;
                             final isCurrent = _statusStep == i;
                             return Row(
-                              crossAxisAlignment:
-                              CrossAxisAlignment.start,
+                              crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Column(children: [
-                                  Container(
-                                    width: 24,
-                                    height: 24,
+                                  AnimatedContainer(
+                                    duration: const Duration(milliseconds: 400),
+                                    curve: Curves.easeOut,
+                                    width: 24, height: 24,
                                     decoration: BoxDecoration(
                                       shape: BoxShape.circle,
                                       color: isActive
@@ -2017,17 +1925,13 @@ class _RiderTrackerPageState extends State<RiderTrackerPage> {
                                           : t.border,
                                     ),
                                     child: Center(
-                                      child: isCurrent &&
-                                          !_isDelivered
+                                      child: isCurrent && !_isDelivered
                                           ? const CupertinoActivityIndicator(
-                                          color: Colors.white,
-                                          radius: 6)
+                                          color: Colors.white, radius: 6)
                                           : Icon(
                                           isActive
-                                              ? CupertinoIcons
-                                              .check_mark
-                                              : CupertinoIcons
-                                              .circle,
+                                              ? CupertinoIcons.check_mark
+                                              : CupertinoIcons.circle,
                                           color: isActive
                                               ? Colors.white
                                               : t.textSecondary,
@@ -2035,48 +1939,42 @@ class _RiderTrackerPageState extends State<RiderTrackerPage> {
                                     ),
                                   ),
                                   if (i < _steps.length - 1)
-                                    Container(
-                                        width: 2,
-                                        height: 22,
-                                        color: _statusStep > i
-                                            ? const Color(0xFF34A853)
-                                            : t.border),
+                                    AnimatedContainer(
+                                      duration: const Duration(milliseconds: 400),
+                                      width: 2, height: 22,
+                                      color: _statusStep > i
+                                          ? const Color(0xFF34A853)
+                                          : t.border,
+                                    ),
                                 ]),
                                 const SizedBox(width: 10),
                                 Expanded(
                                   child: Padding(
-                                    padding: const EdgeInsets.only(
-                                        top: 2),
+                                    padding: const EdgeInsets.only(top: 2),
                                     child: Column(
                                       crossAxisAlignment:
                                       CrossAxisAlignment.start,
                                       children: [
-                                        Text(
-                                          _steps[i]["title"]!,
-                                          style: TextStyle(
-                                            fontSize: 12,
-                                            fontWeight: isActive
-                                                ? FontWeight.w700
-                                                : FontWeight.w400,
-                                            color: isCurrent
-                                                ? const Color(
-                                                0xFF1a73e8)
-                                                : isActive
-                                                ? t.textPrimary
-                                                : t.textSecondary,
-                                          ),
-                                        ),
-                                        if (isActive)
-                                          Text(
-                                            _steps[i]["sub"]!,
+                                        Text(_steps[i]["title"]!,
                                             style: TextStyle(
-                                              fontSize: 10,
+                                              fontSize: 12,
+                                              fontWeight: isActive
+                                                  ? FontWeight.w700
+                                                  : FontWeight.w400,
                                               color: isCurrent
-                                                  ? const Color(
-                                                  0xFF34A853)
+                                                  ? const Color(0xFF1a73e8)
+                                                  : isActive
+                                                  ? t.textPrimary
                                                   : t.textSecondary,
-                                            ),
-                                          ),
+                                            )),
+                                        if (isActive)
+                                          Text(_steps[i]["sub"]!,
+                                              style: TextStyle(
+                                                fontSize: 10,
+                                                color: isCurrent
+                                                    ? const Color(0xFF34A853)
+                                                    : t.textSecondary,
+                                              )),
                                         const SizedBox(height: 12),
                                       ],
                                     ),
