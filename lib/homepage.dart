@@ -1,5 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:ui' as ui;
+import 'dart:math' as math;
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
@@ -69,88 +71,6 @@ final List<LaptopItem> laptops = [
     imagePath: 'assets/images/lenovo_loq_15.jpg',
   ),
 ];
-
-// ─── A* Pathfinding ────────────────────────────────────────────────────────────
-class _Node {
-  final int row, col;
-  double g, h;
-  _Node? parent;
-  bool walkable;
-
-  _Node({required this.row, required this.col, this.walkable = true})
-      : g = double.infinity,
-        h = 0;
-
-  double get f => g + h;
-
-  @override
-  bool operator ==(Object o) =>
-      o is _Node && o.row == row && o.col == col;
-
-  @override
-  int get hashCode => Object.hash(row, col);
-}
-
-List<(int, int)> aStarPath({
-  required int rows,
-  required int cols,
-  required (int, int) start,
-  required (int, int) end,
-  Set<(int, int)>? walls,
-}) {
-  final grid = List.generate(
-    rows,
-        (r) => List.generate(
-      cols,
-          (c) => _Node(
-        row: r,
-        col: c,
-        walkable: !(walls?.contains((r, c)) ?? false),
-      ),
-    ),
-  );
-
-  final startNode = grid[start.$1][start.$2]..g = 0;
-  final endNode = grid[end.$1][end.$2];
-  startNode.h = ((startNode.row - endNode.row).abs() +
-      (startNode.col - endNode.col).abs())
-      .toDouble();
-
-  final open = <_Node>{startNode};
-  final closed = <_Node>{};
-
-  while (open.isNotEmpty) {
-    final current = open.reduce((a, b) => a.f < b.f ? a : b);
-    if (current == endNode) {
-      final path = <(int, int)>[];
-      _Node? n = current;
-      while (n != null) {
-        path.add((n.row, n.col));
-        n = n.parent;
-      }
-      return path.reversed.toList();
-    }
-    open.remove(current);
-    closed.add(current);
-    for (final d in [(-1, 0), (1, 0), (0, -1), (0, 1)]) {
-      final nr = current.row + d.$1;
-      final nc = current.col + d.$2;
-      if (nr < 0 || nr >= rows || nc < 0 || nc >= cols) continue;
-      final nb = grid[nr][nc];
-      if (!nb.walkable || closed.contains(nb)) continue;
-      final tg = current.g + 1;
-      if (tg < nb.g) {
-        nb.parent = current;
-        nb.g = tg;
-        nb.h = ((nb.row - endNode.row).abs() +
-            (nb.col - endNode.col).abs())
-            .toDouble();
-        open.add(nb);
-      }
-    }
-  }
-  return [];
-}
 
 // ─── Homepage ──────────────────────────────────────────────────────────────────
 class Homepage extends StatefulWidget {
@@ -450,8 +370,6 @@ class _HomepageState extends State<Homepage> {
           timer.cancel();
           pollingTimer = null;
 
-          // ── Rider starts from Santa Ana, Pampanga ──
-          // ── ETA set to 1 minute (was 10) ──
           await supabase.from('rider_locations').upsert({
             'order_id': orderId,
             'rider_name': 'Mark Fernandez',
@@ -459,7 +377,7 @@ class _HomepageState extends State<Homepage> {
             'rider_rating': 4.8,
             'lat': kSantaAnaLat,
             'lng': kSantaAnaLng,
-            'eta_minutes': 1,  // ← CHANGED: was 10, now 1
+            'eta_minutes': 1,
             'status': 'preparing',
           });
 
@@ -546,10 +464,14 @@ class _HomepageState extends State<Homepage> {
           ),
           tabBuilder: (context, index) {
             switch (index) {
-              case 0: return _buildHome(t);
-              case 1: return const OrdersPage();
-              case 2: return const Settings();
-              default: return _buildHome(t);
+              case 0:
+                return _buildHome(t);
+              case 1:
+                return const OrdersPage();
+              case 2:
+                return const Settings();
+              default:
+                return _buildHome(t);
             }
           },
         );
@@ -579,15 +501,18 @@ class _HomepageState extends State<Homepage> {
                       children: [
                         Row(children: [
                           Container(
-                            width: 50, height: 50,
+                            width: 50,
+                            height: 50,
                             decoration: BoxDecoration(
                               gradient: const LinearGradient(
                                   colors: [kHighlight, kAccentMid]),
                               borderRadius: BorderRadius.circular(14),
-                              boxShadow: [BoxShadow(
-                                  color: kHighlight.withOpacity(0.4),
-                                  blurRadius: 10,
-                                  offset: const Offset(0, 4))],
+                              boxShadow: [
+                                BoxShadow(
+                                    color: kHighlight.withOpacity(0.4),
+                                    blurRadius: 10,
+                                    offset: const Offset(0, 4))
+                              ],
                             ),
                             child: Center(
                               child: Text(username[0].toUpperCase(),
@@ -661,7 +586,8 @@ class _HomepageState extends State<Homepage> {
                                         fontWeight: FontWeight.w500)),
                                 _locationLoading
                                     ? Row(children: [
-                                  const CupertinoActivityIndicator(radius: 7),
+                                  const CupertinoActivityIndicator(
+                                      radius: 7),
                                   const SizedBox(width: 6),
                                   Text("Fetching GPS...",
                                       style: TextStyle(
@@ -683,7 +609,8 @@ class _HomepageState extends State<Homepage> {
                             _locationLoading
                                 ? CupertinoIcons.arrow_2_circlepath
                                 : CupertinoIcons.location,
-                            color: kHighlight, size: 16,
+                            color: kHighlight,
+                            size: 16,
                           ),
                         ]),
                       ),
@@ -694,10 +621,12 @@ class _HomepageState extends State<Homepage> {
                       height: 200,
                       decoration: BoxDecoration(
                         borderRadius: BorderRadius.circular(20),
-                        boxShadow: [BoxShadow(
-                            color: kHighlight.withOpacity(0.15),
-                            blurRadius: 18,
-                            offset: const Offset(0, 6))],
+                        boxShadow: [
+                          BoxShadow(
+                              color: kHighlight.withOpacity(0.15),
+                              blurRadius: 18,
+                              offset: const Offset(0, 6))
+                        ],
                       ),
                       child: ClipRRect(
                         borderRadius: BorderRadius.circular(20),
@@ -718,11 +647,15 @@ class _HomepageState extends State<Homepage> {
                             mapToolbarEnabled: false,
                             compassEnabled: false,
                             mapType: MapType.normal,
-                            markers: _currentLatLng == null ? {} : {
+                            markers: _currentLatLng == null
+                                ? {}
+                                : {
                               Marker(
-                                markerId: const MarkerId('my_location'),
+                                markerId:
+                                const MarkerId('my_location'),
                                 position: _currentLatLng!,
-                                icon: BitmapDescriptor.defaultMarkerWithHue(
+                                icon: BitmapDescriptor
+                                    .defaultMarkerWithHue(
                                     BitmapDescriptor.hueAzure),
                                 infoWindow: InfoWindow(
                                     title: 'You are here 📍',
@@ -750,29 +683,35 @@ class _HomepageState extends State<Homepage> {
                               ),
                             ),
                           Positioned(
-                            bottom: 10, left: 10,
+                            bottom: 10,
+                            left: 10,
                             child: Container(
                               padding: const EdgeInsets.symmetric(
                                   horizontal: 10, vertical: 6),
                               decoration: BoxDecoration(
                                 color: Colors.white.withOpacity(0.92),
                                 borderRadius: BorderRadius.circular(10),
-                                boxShadow: [BoxShadow(
-                                    color: Colors.black.withOpacity(0.12),
-                                    blurRadius: 6)],
+                                boxShadow: [
+                                  BoxShadow(
+                                      color: Colors.black.withOpacity(0.12),
+                                      blurRadius: 6)
+                                ],
                               ),
                               child: Row(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
                                   Container(
-                                    width: 7, height: 7,
+                                    width: 7,
+                                    height: 7,
                                     decoration: const BoxDecoration(
                                         color: Color(0xFF34A853),
                                         shape: BoxShape.circle),
                                   ),
                                   const SizedBox(width: 5),
                                   Text(
-                                    _locationLoading ? "Locating..." : "Live · GPS",
+                                    _locationLoading
+                                        ? "Locating..."
+                                        : "Live · GPS",
                                     style: const TextStyle(
                                         fontSize: 11,
                                         fontWeight: FontWeight.w700,
@@ -783,7 +722,8 @@ class _HomepageState extends State<Homepage> {
                             ),
                           ),
                           Positioned(
-                            bottom: 10, right: 10,
+                            bottom: 10,
+                            right: 10,
                             child: GestureDetector(
                               onTap: () {
                                 if (_currentLatLng != null) {
@@ -793,16 +733,22 @@ class _HomepageState extends State<Homepage> {
                                 }
                               },
                               child: Container(
-                                width: 38, height: 38,
+                                width: 38,
+                                height: 38,
                                 decoration: BoxDecoration(
                                   color: Colors.white,
                                   borderRadius: BorderRadius.circular(10),
-                                  boxShadow: [BoxShadow(
-                                      color: Colors.black.withOpacity(0.15),
-                                      blurRadius: 6)],
+                                  boxShadow: [
+                                    BoxShadow(
+                                        color:
+                                        Colors.black.withOpacity(0.15),
+                                        blurRadius: 6)
+                                  ],
                                 ),
-                                child: const Icon(CupertinoIcons.location_fill,
-                                    color: kHighlight, size: 18),
+                                child: const Icon(
+                                    CupertinoIcons.location_fill,
+                                    color: kHighlight,
+                                    size: 18),
                               ),
                             ),
                           ),
@@ -816,10 +762,12 @@ class _HomepageState extends State<Homepage> {
                       decoration: BoxDecoration(
                         color: const Color(0xFF0A1628),
                         borderRadius: BorderRadius.circular(22),
-                        boxShadow: [BoxShadow(
-                            color: kHighlight.withOpacity(0.2),
-                            blurRadius: 24,
-                            offset: const Offset(0, 10))],
+                        boxShadow: [
+                          BoxShadow(
+                              color: kHighlight.withOpacity(0.2),
+                              blurRadius: 24,
+                              offset: const Offset(0, 10))
+                        ],
                       ),
                       child: Row(children: [
                         Expanded(
@@ -890,7 +838,8 @@ class _HomepageState extends State<Homepage> {
                               paymentStatus == "PAID"
                                   ? CupertinoIcons.check_mark
                                   : CupertinoIcons.clock,
-                              color: Colors.white, size: 16,
+                              color: Colors.white,
+                              size: 16,
                             ),
                           ),
                           const SizedBox(width: 12),
@@ -1062,7 +1011,8 @@ class _LocationPinPageState extends State<LocationPinPage> {
         markerId: const MarkerId('delivery'),
         position: _pinLocation,
         draggable: true,
-        icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen),
+        icon: BitmapDescriptor.defaultMarkerWithHue(
+            BitmapDescriptor.hueGreen),
         infoWindow: const InfoWindow(title: 'Delivery Location'),
         onDragEnd: (newPos) => setState(() => _pinLocation = newPos),
       ),
@@ -1076,29 +1026,10 @@ class _LocationPinPageState extends State<LocationPinPage> {
     });
   }
 
-  int _latToGridRow(double lat) {
-    const int kRows = 12;
-    const double latStep = 0.002;
-    return ((widget.riderStartLat + (kRows - 1) * latStep - lat) / latStep)
-        .round()
-        .clamp(0, kRows - 1);
-  }
-
-  int _lngToGridCol(double lng) {
-    const int kCols = 10;
-    const double lngStep = 0.002;
-    return ((lng - widget.riderStartLng) / lngStep)
-        .round()
-        .clamp(0, kCols - 1);
-  }
-
   @override
   Widget build(BuildContext context) {
     final box = Hive.box("database");
     final t = AppTheme(isDark: box.get("isDark", defaultValue: false));
-
-    final int gridRow = _latToGridRow(_pinLocation.latitude);
-    final int gridCol = _lngToGridCol(_pinLocation.longitude);
 
     return CupertinoPageScaffold(
       backgroundColor: t.page,
@@ -1146,8 +1077,8 @@ class _LocationPinPageState extends State<LocationPinPage> {
                     const SizedBox(height: 2),
                     Text(
                         "Lat: ${_pinLocation.latitude.toStringAsFixed(4)}  Lng: ${_pinLocation.longitude.toStringAsFixed(4)}",
-                        style:
-                        TextStyle(fontSize: 11, color: t.textSecondary)),
+                        style: TextStyle(
+                            fontSize: 11, color: t.textSecondary)),
                   ],
                 ),
               ),
@@ -1158,10 +1089,12 @@ class _LocationPinPageState extends State<LocationPinPage> {
               margin: const EdgeInsets.symmetric(horizontal: 16),
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(20),
-                boxShadow: [BoxShadow(
-                    color: kHighlight.withOpacity(0.15),
-                    blurRadius: 16,
-                    offset: const Offset(0, 6))],
+                boxShadow: [
+                  BoxShadow(
+                      color: kHighlight.withOpacity(0.15),
+                      blurRadius: 16,
+                      offset: const Offset(0, 6))
+                ],
               ),
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(20),
@@ -1182,8 +1115,8 @@ class _LocationPinPageState extends State<LocationPinPage> {
             padding: const EdgeInsets.fromLTRB(16, 14, 16, 20),
             child: Column(children: [
               Container(
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 14, vertical: 11),
+                padding:
+                const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
                 decoration: BoxDecoration(
                     color: t.card,
                     borderRadius: BorderRadius.circular(12),
@@ -1216,8 +1149,8 @@ class _LocationPinPageState extends State<LocationPinPage> {
                         builder: (_) => RiderTrackerPage(
                           orderId: widget.orderId,
                           itemName: widget.itemName,
-                          destGridRow: gridRow,
-                          destGridCol: gridCol,
+                          destGridRow: 0,
+                          destGridCol: 0,
                           destLat: _pinLocation.latitude,
                           destLng: _pinLocation.longitude,
                           riderStartLat: widget.riderStartLat,
@@ -1242,10 +1175,10 @@ class _LocationPinPageState extends State<LocationPinPage> {
 // ─── Rider Tracker Page ────────────────────────────────────────────────────────
 class RiderTrackerPage extends StatefulWidget {
   final String orderId, itemName;
-  final int destGridRow, destGridCol;
   final double destLat, destLng;
   final double riderStartLat;
   final double riderStartLng;
+  final int destGridRow, destGridCol;
 
   const RiderTrackerPage({
     super.key,
@@ -1265,71 +1198,40 @@ class RiderTrackerPage extends StatefulWidget {
 
 class _RiderTrackerPageState extends State<RiderTrackerPage>
     with SingleTickerProviderStateMixin {
-  static const int kRows = 12, kCols = 10;
-  static const (int, int) kRiderStart = (9, 2);
-  static const double _latStep = 0.002, _lngStep = 0.002;
 
-  // ─── ANIMATION: smooth interpolation between grid cells ───────────────────
+  static const int kTotalSeconds = 60;
+
+  List<LatLng> _waypoints = [];
+  int _waypointIndex = 0;
+  bool _waypointsReady = false;
+
+  late LatLng _riderLatLng;
+
   late AnimationController _animController;
   late Animation<double> _animValue;
-
-  // The current animated LatLng of the rider (interpolated between cells)
-  LatLng _animatedRiderLatLng = const LatLng(0, 0);
-
-  LatLng _gridToLatLng(int row, int col) => LatLng(
-    widget.riderStartLat + (kRows - 1 - row) * _latStep,
-    widget.riderStartLng + col * _lngStep,
-  );
-
-  Set<(int, int)> get _walls {
-    final w = <(int, int)>{};
-    for (int r = 0; r < kRows; r++)
-      for (int c = 0; c < kCols; c++)
-        if ((r + c) % 3 != 0) w.add((r, c));
-    return w;
-  }
-
-  late List<(int, int)> _path;
-  int _pathIndex = 0;
-
-  // Previous cell for interpolation
-  LatLng _prevRiderLatLng = const LatLng(0, 0);
-  LatLng _nextRiderLatLng = const LatLng(0, 0);
-
-  (int, int) get _riderCell =>
-      _pathIndex < _path.length ? _path[_pathIndex] : _path.last;
+  LatLng _prevLatLng = const LatLng(0, 0);
+  LatLng _nextLatLng = const LatLng(0, 0);
 
   GoogleMapController? _mapController;
   Set<Marker> _markers = {};
   Set<Polyline> _polylines = {};
 
+  BitmapDescriptor? _motoIcon;
+  BitmapDescriptor? _destIcon;
+
   final supabase = Supabase.instance.client;
   final box = Hive.box("database");
+  StreamSubscription? _subscription;
+  Timer? _moveTimer, _countdownTimer, _statusAutoTimer;
 
   String _riderName = "Finding courier...";
   String _riderPlate = "---";
   double _riderRating = 0.0;
-  int _etaMinutes = 0;
+  int _etaMinutes = 1;
   String _status = "preparing";
   int _statusStep = 0;
   bool _isDelivered = false;
   bool _isLoading = true;
-
-  StreamSubscription? _subscription;
-  Timer? _moveTimer, _countdownTimer, _statusAutoTimer;
-
-  // ─── Total delivery = 60 seconds (1 minute) ───────────────────────────────
-  // Path has N steps. We want all steps done in ~60 seconds.
-  // Step interval = 60000ms / max(N-1, 1).
-  // We compute this dynamically once path is ready.
-  int get _stepIntervalMs {
-    final steps = (_path.length - 1).clamp(1, 999);
-    return (60000 / steps).round(); // ← 1 minute total
-  }
-
-  // Smooth animation duration per step
-  Duration get _animDuration =>
-      Duration(milliseconds: (_stepIntervalMs * 0.85).round());
 
   final List<Map<String, String>> _steps = [
     {"title": "Order Confirmed", "sub": "We received your order 💻"},
@@ -1339,40 +1241,375 @@ class _RiderTrackerPageState extends State<RiderTrackerPage>
     {"title": "Delivered! 🎉", "sub": "Enjoy your new laptop!"},
   ];
 
+  // ─── Custom motorcycle marker ──────────────────────────────────────────────
+  Future<BitmapDescriptor> _buildMotoIcon() async {
+    const double size = 90.0;
+    final recorder = ui.PictureRecorder();
+    final canvas = Canvas(recorder, Rect.fromLTWH(0, 0, size, size));
+
+    // Drop shadow ellipse
+    final shadowPaint = Paint()
+      ..color = Colors.black.withOpacity(0.22)
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4);
+    canvas.drawOval(
+      Rect.fromCenter(
+          center: Offset(size / 2, size - 8), width: 36, height: 10),
+      shadowPaint,
+    );
+
+    // Pin triangle (green)
+    final pinPaint = Paint()..color = const Color(0xFF1B8A3E);
+    final pinPath = Path()
+      ..moveTo(size / 2 - 9, size / 2 + 18)
+      ..lineTo(size / 2 + 9, size / 2 + 18)
+      ..lineTo(size / 2, size / 2 + 34)
+      ..close();
+    canvas.drawPath(pinPath, pinPaint);
+
+    // Outer glow ring
+    final glowPaint = Paint()
+      ..color = const Color(0xFF34A853).withOpacity(0.3)
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 8);
+    canvas.drawCircle(Offset(size / 2, size / 2 - 4), 30, glowPaint);
+
+    // Main circle (green gradient)
+    final bgPaint = Paint()
+      ..shader = RadialGradient(
+        colors: [const Color(0xFF4CCA6E), const Color(0xFF1B8A3E)],
+        center: Alignment.topLeft,
+        radius: 1.2,
+      ).createShader(Rect.fromCircle(
+          center: Offset(size / 2, size / 2 - 4), radius: 28));
+    canvas.drawCircle(Offset(size / 2, size / 2 - 4), 28, bgPaint);
+
+    // White border ring
+    final borderPaint = Paint()
+      ..color = Colors.white
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 3;
+    canvas.drawCircle(Offset(size / 2, size / 2 - 4), 28, borderPaint);
+
+    // Inner white circle for contrast
+    final innerPaint = Paint()..color = Colors.white.withOpacity(0.15);
+    canvas.drawCircle(Offset(size / 2, size / 2 - 4), 22, innerPaint);
+
+    // Motorcycle emoji
+    final tp = TextPainter(
+      text: const TextSpan(
+        text: '🛵',
+        style: TextStyle(fontSize: 28, height: 1.0),
+      ),
+      textDirection: TextDirection.ltr,
+    )..layout();
+    tp.paint(
+      canvas,
+      Offset(
+        (size - tp.width) / 2,
+        (size / 2 - 4) - tp.height / 2,
+      ),
+    );
+
+    final picture = recorder.endRecording();
+    final img = await picture.toImage(size.toInt(), size.toInt());
+    final bytes = await img.toByteData(format: ui.ImageByteFormat.png);
+    return BitmapDescriptor.fromBytes(bytes!.buffer.asUint8List());
+  }
+
+  // ─── Custom destination pin ────────────────────────────────────────────────
+  Future<BitmapDescriptor> _buildDestIcon() async {
+    const double size = 80.0;
+    final recorder = ui.PictureRecorder();
+    final canvas = Canvas(recorder, Rect.fromLTWH(0, 0, size, size));
+
+    final shadowPaint = Paint()
+      ..color = Colors.black.withOpacity(0.2)
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4);
+    canvas.drawOval(
+      Rect.fromCenter(
+          center: Offset(size / 2, size - 8), width: 32, height: 9),
+      shadowPaint,
+    );
+
+    // Pin triangle (blue)
+    final pinPaint = Paint()..color = const Color(0xFF1557A0);
+    final pinPath = Path()
+      ..moveTo(size / 2 - 8, size / 2 + 16)
+      ..lineTo(size / 2 + 8, size / 2 + 16)
+      ..lineTo(size / 2, size / 2 + 30)
+      ..close();
+    canvas.drawPath(pinPath, pinPaint);
+
+    // Circle (blue gradient)
+    final bgPaint = Paint()
+      ..shader = RadialGradient(
+        colors: [const Color(0xFF4A90E2), const Color(0xFF1557A0)],
+      ).createShader(Rect.fromCircle(
+          center: Offset(size / 2, size / 2 - 4), radius: 26));
+    canvas.drawCircle(Offset(size / 2, size / 2 - 4), 26, bgPaint);
+
+    final borderPaint = Paint()
+      ..color = Colors.white
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 3;
+    canvas.drawCircle(Offset(size / 2, size / 2 - 4), 26, borderPaint);
+
+    // House emoji
+    final tp = TextPainter(
+      text: const TextSpan(
+        text: '🏠',
+        style: TextStyle(fontSize: 24, height: 1.0),
+      ),
+      textDirection: TextDirection.ltr,
+    )..layout();
+    tp.paint(
+      canvas,
+      Offset((size - tp.width) / 2, (size / 2 - 4) - tp.height / 2),
+    );
+
+    final picture = recorder.endRecording();
+    final img = await picture.toImage(size.toInt(), size.toInt());
+    final bytes = await img.toByteData(format: ui.ImageByteFormat.png);
+    return BitmapDescriptor.fromBytes(bytes!.buffer.asUint8List());
+  }
+
+  // ─── Fetch real road waypoints from OSRM (free, no API key) ───────────────
+  Future<List<LatLng>> _fetchRoadWaypoints() async {
+    final startLng = widget.riderStartLng;
+    final startLat = widget.riderStartLat;
+    final endLng = widget.destLng;
+    final endLat = widget.destLat;
+
+    final url =
+        'https://router.project-osrm.org/route/v1/driving/'
+        '$startLng,$startLat;$endLng,$endLat'
+        '?overview=full&geometries=geojson&steps=false';
+
+    try {
+      final res = await http.get(Uri.parse(url)).timeout(
+        const Duration(seconds: 8),
+      );
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body);
+        final coords =
+        data['routes'][0]['geometry']['coordinates'] as List;
+        final roadPoints = coords
+            .map((c) =>
+            LatLng((c[1] as num).toDouble(), (c[0] as num).toDouble()))
+            .toList();
+
+        if (roadPoints.length >= 2) {
+          return _densifyWaypoints(roadPoints, 80);
+        }
+      }
+    } catch (e) {
+      debugPrint('OSRM routing error: $e — falling back to straight line');
+    }
+
+    // Fallback: straight-line
+    return List.generate(81, (i) {
+      final t = i / 80;
+      return LatLng(
+        startLat + (endLat - startLat) * t,
+        startLng + (endLng - startLng) * t,
+      );
+    });
+  }
+
+  List<LatLng> _densifyWaypoints(List<LatLng> points, int targetCount) {
+    if (points.length >= targetCount) return points;
+
+    double totalDist = 0;
+    for (int i = 0; i < points.length - 1; i++) {
+      totalDist += _latLngDistance(points[i], points[i + 1]);
+    }
+
+    final stepDist = totalDist / targetCount;
+    final result = <LatLng>[points.first];
+    double accumulated = 0;
+    int segIdx = 0;
+
+    for (int i = 1; i <= targetCount; i++) {
+      final targetDist = i * stepDist;
+
+      while (segIdx < points.length - 2) {
+        final segLen = _latLngDistance(points[segIdx], points[segIdx + 1]);
+        if (accumulated + segLen >= targetDist) break;
+        accumulated += segLen;
+        segIdx++;
+      }
+
+      if (segIdx >= points.length - 1) {
+        result.add(points.last);
+        continue;
+      }
+
+      final segLen = _latLngDistance(points[segIdx], points[segIdx + 1]);
+      if (segLen == 0) {
+        result.add(points[segIdx]);
+        continue;
+      }
+
+      final t = (targetDist - accumulated) / segLen;
+      result.add(LatLng(
+        points[segIdx].latitude +
+            (points[segIdx + 1].latitude - points[segIdx].latitude) * t,
+        points[segIdx].longitude +
+            (points[segIdx + 1].longitude - points[segIdx].longitude) * t,
+      ));
+    }
+
+    return result;
+  }
+
+  double _latLngDistance(LatLng a, LatLng b) {
+    final dLat = a.latitude - b.latitude;
+    final dLng = a.longitude - b.longitude;
+    return math.sqrt(dLat * dLat + dLng * dLng);
+  }
+
+  int get kStepIntervalMs =>
+      _waypoints.isEmpty ? 1000 : (kTotalSeconds * 1000) ~/ _waypoints.length;
+
+  void _updateMapElements() {
+    if (_waypoints.isEmpty) return;
+    final destLatLng = LatLng(widget.destLat, widget.destLng);
+    final pastPoints = _waypoints.take(_waypointIndex + 1).toList();
+    final futurePoints = _waypoints.skip(_waypointIndex).toList();
+
+    _polylines = {
+      if (pastPoints.length > 1)
+        Polyline(
+          polylineId: const PolylineId('past'),
+          points: pastPoints,
+          color: const Color(0xFF34A853).withOpacity(0.45),
+          width: 6,
+          patterns: [PatternItem.dash(14), PatternItem.gap(7)],
+        ),
+      if (futurePoints.length > 1)
+        Polyline(
+          polylineId: const PolylineId('future'),
+          points: futurePoints,
+          color: const Color(0xFF34A853),
+          width: 6,
+        ),
+    };
+
+    _markers = {
+      Marker(
+        markerId: const MarkerId('rider'),
+        position: _riderLatLng,
+        icon: _motoIcon ??
+            BitmapDescriptor.defaultMarkerWithHue(
+                BitmapDescriptor.hueGreen),
+        infoWindow: InfoWindow(title: _riderName, snippet: 'Your rider 🛵'),
+        flat: false,
+        anchor: const Offset(0.5, 0.85),
+        zIndex: 2,
+      ),
+      Marker(
+        markerId: const MarkerId('dest'),
+        position: destLatLng,
+        icon: _destIcon ??
+            BitmapDescriptor.defaultMarkerWithHue(
+                BitmapDescriptor.hueAzure),
+        infoWindow: const InfoWindow(
+            title: 'Delivery Location', snippet: 'Your address 📍'),
+        anchor: const Offset(0.5, 0.85),
+        zIndex: 1,
+      ),
+    };
+  }
+
+  void _onAnimTick() {
+    if (!mounted) return;
+    final t = _animValue.value;
+    setState(() {
+      _riderLatLng = LatLng(
+        _prevLatLng.latitude +
+            (_nextLatLng.latitude - _prevLatLng.latitude) * t,
+        _prevLatLng.longitude +
+            (_nextLatLng.longitude - _prevLatLng.longitude) * t,
+      );
+      _updateMapElements();
+    });
+  }
+
+  void _animateToWaypoint(LatLng next) {
+    _prevLatLng = _riderLatLng;
+    _nextLatLng = next;
+    _animController.duration =
+        Duration(milliseconds: (kStepIntervalMs * 0.92).round());
+    _animController.forward(from: 0);
+    _mapController?.animateCamera(CameraUpdate.newLatLng(next));
+  }
+
   @override
   void initState() {
     super.initState();
 
-    // ─── Init smooth animation controller ───────────────────────────────────
+    _riderLatLng = LatLng(widget.riderStartLat, widget.riderStartLng);
+    _prevLatLng = _riderLatLng;
+    _nextLatLng = _riderLatLng;
+
     _animController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 700),
+      duration: const Duration(milliseconds: 900),
     );
     _animValue = CurvedAnimation(
       parent: _animController,
       curve: Curves.easeInOut,
-    );
-    _animValue.addListener(_onAnimTick);
+    )..addListener(_onAnimTick);
 
-    _path = aStarPath(
-      rows: kRows,
-      cols: kCols,
-      start: kRiderStart,
-      end: (widget.destGridRow, widget.destGridCol),
-      walls: _walls,
-    );
-    if (_path.isEmpty) _path = [kRiderStart];
-
-    // Set initial positions
-    _animatedRiderLatLng = _gridToLatLng(_riderCell.$1, _riderCell.$2);
-    _prevRiderLatLng = _animatedRiderLatLng;
-    _nextRiderLatLng = _animatedRiderLatLng;
-
-    _updateMapElements();
     _listenToCourierAPI();
+    _scheduleStatusAutoUpdate();
+    _initRouteAndIcons();
+  }
+
+  Future<void> _initRouteAndIcons() async {
+    final results = await Future.wait([
+      _buildMotoIcon(),
+      _buildDestIcon(),
+      _fetchRoadWaypoints(),
+    ]);
+
+    if (!mounted) return;
+
+    setState(() {
+      _motoIcon = results[0] as BitmapDescriptor;
+      _destIcon = results[1] as BitmapDescriptor;
+      _waypoints = results[2] as List<LatLng>;
+      _waypointsReady = true;
+      _riderLatLng = _waypoints.first;
+      _prevLatLng = _riderLatLng;
+      _nextLatLng = _riderLatLng;
+      _updateMapElements();
+    });
+
+    if (_mapController != null && _waypoints.isNotEmpty) {
+      final bounds = LatLngBounds(
+        southwest: LatLng(
+          widget.riderStartLat < widget.destLat
+              ? widget.riderStartLat
+              : widget.destLat,
+          widget.riderStartLng < widget.destLng
+              ? widget.riderStartLng
+              : widget.destLng,
+        ),
+        northeast: LatLng(
+          widget.riderStartLat > widget.destLat
+              ? widget.riderStartLat
+              : widget.destLat,
+          widget.riderStartLng > widget.destLng
+              ? widget.riderStartLng
+              : widget.destLng,
+        ),
+      );
+      _mapController!
+          .animateCamera(CameraUpdate.newLatLngBounds(bounds, 70));
+    }
+
     _startRiderMovement();
     _startCountdown();
-    _scheduleStatusAutoUpdate();
   }
 
   @override
@@ -1385,85 +1622,7 @@ class _RiderTrackerPageState extends State<RiderTrackerPage>
     super.dispose();
   }
 
-  // ─── Called every animation frame to interpolate rider position ───────────
-  void _onAnimTick() {
-    if (!mounted) return;
-    final t = _animValue.value;
-    final lat = _prevRiderLatLng.latitude +
-        (_nextRiderLatLng.latitude - _prevRiderLatLng.latitude) * t;
-    final lng = _prevRiderLatLng.longitude +
-        (_nextRiderLatLng.longitude - _prevRiderLatLng.longitude) * t;
-    setState(() {
-      _animatedRiderLatLng = LatLng(lat, lng);
-      _updateMapElements();
-    });
-  }
-
-  // ─── Trigger smooth move to next cell ────────────────────────────────────
-  void _animateToNextCell() {
-    _prevRiderLatLng = _animatedRiderLatLng;
-    _nextRiderLatLng = _gridToLatLng(_riderCell.$1, _riderCell.$2);
-    _animController.duration = _animDuration;
-    _animController.forward(from: 0);
-
-    // Keep camera following rider smoothly
-    _mapController?.animateCamera(
-      CameraUpdate.newLatLng(_nextRiderLatLng),
-    );
-  }
-
-  void _updateMapElements() {
-    final destLatLng = LatLng(widget.destLat, widget.destLng);
-
-    final pastPoints = _path
-        .take(_pathIndex + 1)
-        .map((p) => _gridToLatLng(p.$1, p.$2))
-        .toList();
-    final futurePoints = _path
-        .skip(_pathIndex)
-        .map((p) => _gridToLatLng(p.$1, p.$2))
-        .toList();
-
-    _polylines = {
-      if (pastPoints.length > 1)
-        Polyline(
-          polylineId: const PolylineId('past'),
-          points: pastPoints,
-          color: const Color(0xFF00E676).withOpacity(0.35),
-          width: 5,
-          patterns: [PatternItem.dash(12), PatternItem.gap(6)],
-        ),
-      if (futurePoints.length > 1)
-        Polyline(
-          polylineId: const PolylineId('future'),
-          points: futurePoints,
-          color: const Color(0xFF00E676),
-          width: 5,
-        ),
-    };
-
-    _markers = {
-      Marker(
-        markerId: const MarkerId('rider'),
-        position: _animatedRiderLatLng, // ← Uses animated/interpolated position
-        icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen),
-        infoWindow: InfoWindow(title: _riderName, snippet: 'Your rider 🛵'),
-        flat: true,
-        anchor: const Offset(0.5, 0.5),
-      ),
-      Marker(
-        markerId: const MarkerId('dest'),
-        position: destLatLng,
-        icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueAzure),
-        infoWindow: const InfoWindow(
-            title: 'Delivery Location', snippet: 'Your address 📍'),
-      ),
-    };
-  }
-
-  // ─── Status auto-update: after 6s move from 'preparing' → 'on_the_way' ───
   void _scheduleStatusAutoUpdate() {
-    // Changed from 1 minute → 6 seconds (fits within the 1-min delivery)
     _statusAutoTimer = Timer(const Duration(seconds: 6), () async {
       if (!mounted || _isDelivered) return;
       if (_status == 'preparing') {
@@ -1494,41 +1653,51 @@ class _RiderTrackerPageState extends State<RiderTrackerPage>
         _etaMinutes = row['eta_minutes'] ?? 0;
         _status = row['status'] ?? 'preparing';
         switch (_status) {
-          case 'confirmed': _statusStep = 0; break;
-          case 'preparing': _statusStep = 1; break;
-          case 'on_the_way': _statusStep = 2; break;
-          case 'nearby': _statusStep = 3; break;
+          case 'confirmed':
+            _statusStep = 0;
+            break;
+          case 'preparing':
+            _statusStep = 1;
+            break;
+          case 'on_the_way':
+            _statusStep = 2;
+            break;
+          case 'nearby':
+            _statusStep = 3;
+            break;
           case 'delivered':
             _statusStep = 4;
             _isDelivered = true;
             _moveTimer?.cancel();
             _animController.stop();
+            setState(() {
+              _riderLatLng = LatLng(widget.destLat, widget.destLng);
+              _updateMapElements();
+            });
             break;
         }
-        _updateMapElements();
       });
     });
   }
 
   void _startRiderMovement() {
-    // ─── Dynamic interval: total 60s / number of path steps ─────────────────
-    final intervalMs = _stepIntervalMs;
+    if (!_waypointsReady || _waypoints.isEmpty) return;
+    final interval = kStepIntervalMs;
 
     _moveTimer = Timer.periodic(
-      Duration(milliseconds: intervalMs),
+      Duration(milliseconds: interval),
           (timer) {
         if (!mounted || _isDelivered) return;
-        if (_pathIndex < _path.length - 1) {
-          setState(() {
-            _pathIndex++;
-          });
-          _animateToNextCell(); // ← Triggers smooth animation
+        if (_waypointIndex < _waypoints.length - 1) {
+          setState(() => _waypointIndex++);
+          _animateToWaypoint(_waypoints[_waypointIndex]);
         } else {
           timer.cancel();
           if (!_isDelivered) {
-            supabase.from('rider_locations').update(
-                {'status': 'delivered', 'eta_minutes': 0}).eq(
-                'order_id', widget.orderId);
+            supabase
+                .from('rider_locations')
+                .update({'status': 'delivered', 'eta_minutes': 0})
+                .eq('order_id', widget.orderId);
           }
         }
       },
@@ -1536,37 +1705,32 @@ class _RiderTrackerPageState extends State<RiderTrackerPage>
   }
 
   void _startCountdown() {
-    // ─── 1 minute = 60 seconds. Decrement every 6s (10 ticks = 1 min) ───────
-    // ETA starts at 1 (minute). We update it in seconds-based fashion:
-    // Every 6s we decrement. We'll track seconds internally.
-    int secondsLeft = 60;
-
-    _countdownTimer = Timer.periodic(const Duration(seconds: 6), (timer) async {
-      if (!mounted || _isDelivered) {
-        timer.cancel();
-        return;
-      }
-      secondsLeft -= 6;
-      final minutesLeft = (secondsLeft / 60).ceil().clamp(0, 1);
-
-      if (secondsLeft <= 0) {
-        timer.cancel();
-        await supabase.from('rider_locations').update(
-            {'eta_minutes': 0, 'status': 'delivered'}).eq(
-            'order_id', widget.orderId);
-      } else {
-        // Switch to 'nearby' in last 18 seconds, 'on_the_way' before that
-        String newStatus = secondsLeft <= 18
-            ? 'nearby'
-            : secondsLeft <= 42
-            ? 'on_the_way'
-            : _status;
-        await supabase.from('rider_locations').update({
-          'eta_minutes': minutesLeft,
-          'status': newStatus,
-        }).eq('order_id', widget.orderId);
-      }
-    });
+    int secondsLeft = kTotalSeconds;
+    _countdownTimer =
+        Timer.periodic(const Duration(seconds: 6), (timer) async {
+          if (!mounted || _isDelivered) {
+            timer.cancel();
+            return;
+          }
+          secondsLeft -= 6;
+          final minutesLeft = (secondsLeft / 60).ceil().clamp(0, 1);
+          if (secondsLeft <= 0) {
+            timer.cancel();
+            await supabase
+                .from('rider_locations')
+                .update({'eta_minutes': 0, 'status': 'delivered'})
+                .eq('order_id', widget.orderId);
+          } else {
+            final newStatus = secondsLeft <= 18
+                ? 'nearby'
+                : secondsLeft <= 42
+                ? 'on_the_way'
+                : _status;
+            await supabase.from('rider_locations').update(
+                {'eta_minutes': minutesLeft, 'status': newStatus}).eq(
+                'order_id', widget.orderId);
+          }
+        });
   }
 
   @override
@@ -1576,7 +1740,7 @@ class _RiderTrackerPageState extends State<RiderTrackerPage>
       builder: (context, _, __) {
         final t = AppTheme(isDark: box.get("isDark", defaultValue: false));
 
-        if (_isLoading) {
+        if (_isLoading && !_waypointsReady) {
           return CupertinoPageScaffold(
             backgroundColor: t.page,
             child: SafeArea(
@@ -1592,6 +1756,11 @@ class _RiderTrackerPageState extends State<RiderTrackerPage>
                             color: t.textSecondary,
                             fontSize: 14,
                             fontWeight: FontWeight.w500)),
+                    const SizedBox(height: 8),
+                    Text("Calculating road route 🛵",
+                        style: TextStyle(
+                            color: t.textSecondary.withOpacity(0.6),
+                            fontSize: 12)),
                   ],
                 ),
               ),
@@ -1599,15 +1768,45 @@ class _RiderTrackerPageState extends State<RiderTrackerPage>
           );
         }
 
+        final stepsLeft =
+        (_waypoints.isEmpty ? 0 : _waypoints.length - 1 - _waypointIndex)
+            .clamp(0, 999);
+
         return CupertinoPageScaffold(
           backgroundColor: t.page,
           child: Stack(children: [
+            // ── Full-screen Map ────────────────────────────────────────────
             Positioned.fill(
               child: GoogleMap(
                 initialCameraPosition: CameraPosition(
-                    target: _animatedRiderLatLng,
-                    zoom: 15),
-                onMapCreated: (c) => _mapController = c,
+                  target: LatLng(widget.riderStartLat, widget.riderStartLng),
+                  zoom: 14,
+                ),
+                onMapCreated: (c) {
+                  _mapController = c;
+                  if (_waypoints.isNotEmpty) {
+                    final bounds = LatLngBounds(
+                      southwest: LatLng(
+                        widget.riderStartLat < widget.destLat
+                            ? widget.riderStartLat
+                            : widget.destLat,
+                        widget.riderStartLng < widget.destLng
+                            ? widget.riderStartLng
+                            : widget.destLng,
+                      ),
+                      northeast: LatLng(
+                        widget.riderStartLat > widget.destLat
+                            ? widget.riderStartLat
+                            : widget.destLat,
+                        widget.riderStartLng > widget.destLng
+                            ? widget.riderStartLng
+                            : widget.destLng,
+                      ),
+                    );
+                    c.animateCamera(
+                        CameraUpdate.newLatLngBounds(bounds, 70));
+                  }
+                },
                 markers: _markers,
                 polylines: _polylines,
                 myLocationEnabled: false,
@@ -1617,8 +1816,11 @@ class _RiderTrackerPageState extends State<RiderTrackerPage>
               ),
             ),
 
+            // ── Top bar ────────────────────────────────────────────────────
             Positioned(
-              top: 0, left: 0, right: 0,
+              top: 0,
+              left: 0,
+              right: 0,
               child: SafeArea(
                 child: Padding(
                   padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
@@ -1627,13 +1829,16 @@ class _RiderTrackerPageState extends State<RiderTrackerPage>
                       padding: EdgeInsets.zero,
                       onPressed: () => Navigator.pop(context),
                       child: Container(
-                        width: 42, height: 42,
+                        width: 42,
+                        height: 42,
                         decoration: BoxDecoration(
                           color: Colors.white,
                           shape: BoxShape.circle,
-                          boxShadow: [BoxShadow(
-                              color: Colors.black.withOpacity(0.2),
-                              blurRadius: 8)],
+                          boxShadow: [
+                            BoxShadow(
+                                color: Colors.black.withOpacity(0.2),
+                                blurRadius: 8)
+                          ],
                         ),
                         child: const Icon(CupertinoIcons.back,
                             color: Colors.black87, size: 20),
@@ -1647,9 +1852,11 @@ class _RiderTrackerPageState extends State<RiderTrackerPage>
                         decoration: BoxDecoration(
                           color: Colors.white,
                           borderRadius: BorderRadius.circular(12),
-                          boxShadow: [BoxShadow(
-                              color: Colors.black.withOpacity(0.15),
-                              blurRadius: 10)],
+                          boxShadow: [
+                            BoxShadow(
+                                color: Colors.black.withOpacity(0.15),
+                                blurRadius: 10)
+                          ],
                         ),
                         child: Row(children: [
                           const Icon(CupertinoIcons.location_solid,
@@ -1680,83 +1887,109 @@ class _RiderTrackerPageState extends State<RiderTrackerPage>
               ),
             ),
 
+            // ── LIVE badge ─────────────────────────────────────────────────
             Positioned(
-              top: 110, right: 12,
+              top: 110,
+              right: 12,
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                padding:
+                const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                 decoration: BoxDecoration(
                   color: const Color(0xFFEA4335),
                   borderRadius: BorderRadius.circular(20),
-                  boxShadow: [BoxShadow(
-                      color: const Color(0xFFEA4335).withOpacity(0.4),
-                      blurRadius: 8)],
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Container(
-                        width: 6, height: 6,
-                        decoration: const BoxDecoration(
-                            color: Colors.white, shape: BoxShape.circle)),
-                    const SizedBox(width: 4),
-                    const Text('LIVE',
-                        style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 10,
-                            fontWeight: FontWeight.w800,
-                            letterSpacing: 0.5)),
+                  boxShadow: [
+                    BoxShadow(
+                        color: const Color(0xFFEA4335).withOpacity(0.4),
+                        blurRadius: 8)
                   ],
                 ),
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  Container(
+                      width: 6,
+                      height: 6,
+                      decoration: const BoxDecoration(
+                          color: Colors.white, shape: BoxShape.circle)),
+                  const SizedBox(width: 4),
+                  const Text('LIVE',
+                      style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 10,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 0.5)),
+                ]),
               ),
             ),
 
+            // ── Real Road Route badge ──────────────────────────────────────
             Positioned(
-              bottom: 330, left: 12,
+              top: 110,
+              left: 12,
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                padding:
+                const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                 decoration: BoxDecoration(
-                    color: const Color(0xFF34A853).withOpacity(0.9),
-                    borderRadius: BorderRadius.circular(8)),
-                child: const Text('A* PATHFINDING',
-                    style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 9,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: 0.5)),
+                  color: Colors.white.withOpacity(0.95),
+                  borderRadius: BorderRadius.circular(20),
+                  boxShadow: [
+                    BoxShadow(
+                        color: Colors.black.withOpacity(0.12), blurRadius: 6)
+                  ],
+                ),
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  Container(
+                      width: 7,
+                      height: 7,
+                      decoration: const BoxDecoration(
+                          color: Color(0xFF34A853), shape: BoxShape.circle)),
+                  const SizedBox(width: 5),
+                  const Text('Real Road Route',
+                      style: TextStyle(
+                          fontSize: 9,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.black87)),
+                ]),
               ),
             ),
 
+            // ── Steps left badge ───────────────────────────────────────────
             Positioned(
-              bottom: 330, right: 12,
+              bottom: 330,
+              right: 12,
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                padding:
+                const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                 decoration: BoxDecoration(
                   color: Colors.white.withOpacity(0.95),
                   borderRadius: BorderRadius.circular(8),
-                  boxShadow: [BoxShadow(
-                      color: Colors.black.withOpacity(0.1), blurRadius: 4)],
+                  boxShadow: [
+                    BoxShadow(
+                        color: Colors.black.withOpacity(0.1), blurRadius: 4)
+                  ],
                 ),
-                child: Text(
-                  '${(_path.length - 1 - _pathIndex).clamp(0, 999)} steps left',
-                  style: const TextStyle(
-                      fontSize: 9,
-                      fontWeight: FontWeight.w700,
-                      color: Colors.black87),
-                ),
+                child: Text('$stepsLeft steps left',
+                    style: const TextStyle(
+                        fontSize: 9,
+                        fontWeight: FontWeight.w700,
+                        color: Colors.black87)),
               ),
             ),
 
+            // ── Bottom sheet ───────────────────────────────────────────────
             Positioned(
-              bottom: 0, left: 0, right: 0,
+              bottom: 0,
+              left: 0,
+              right: 0,
               child: Container(
                 decoration: BoxDecoration(
                   color: t.page,
                   borderRadius:
                   const BorderRadius.vertical(top: Radius.circular(24)),
-                  boxShadow: [BoxShadow(
-                      color: Colors.black.withOpacity(0.15),
-                      blurRadius: 20,
-                      offset: const Offset(0, -4))],
+                  boxShadow: [
+                    BoxShadow(
+                        color: Colors.black.withOpacity(0.15),
+                        blurRadius: 20,
+                        offset: const Offset(0, -4))
+                  ],
                 ),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
@@ -1764,13 +1997,15 @@ class _RiderTrackerPageState extends State<RiderTrackerPage>
                     Padding(
                       padding: const EdgeInsets.only(top: 10, bottom: 6),
                       child: Container(
-                          width: 36, height: 4,
+                          width: 36,
+                          height: 4,
                           decoration: BoxDecoration(
                               color: t.border,
                               borderRadius: BorderRadius.circular(2))),
                     ),
 
-                    Container(
+                    // ETA row
+                    Padding(
                       padding: const EdgeInsets.fromLTRB(20, 8, 20, 12),
                       child: Row(children: [
                         Expanded(
@@ -1778,7 +2013,9 @@ class _RiderTrackerPageState extends State<RiderTrackerPage>
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                  _isDelivered ? "Delivered! 🎉" : "Arriving in",
+                                  _isDelivered
+                                      ? "Delivered! 🎉"
+                                      : "Arriving in",
                                   style: TextStyle(
                                       color: t.textSecondary,
                                       fontSize: 12,
@@ -1799,19 +2036,19 @@ class _RiderTrackerPageState extends State<RiderTrackerPage>
                             ],
                           ),
                         ),
-                        // ─── Animated rider emoji that bounces ────────────
                         AnimatedBuilder(
                           animation: _animController,
                           builder: (_, __) {
                             final bounce = _isDelivered
                                 ? 0.0
-                                : (1.0 - (_animValue.value - 0.5).abs() * 2)
+                                : (1.0 -
+                                (_animValue.value - 0.5).abs() *
+                                    2)
                                 .clamp(0.0, 1.0) *
                                 6;
                             return Transform.translate(
                               offset: Offset(0, -bounce),
-                              child: Text(
-                                  _isDelivered ? '🎉' : '🛵',
+                              child: Text(_isDelivered ? '🎉' : '🛵',
                                   style: const TextStyle(fontSize: 42)),
                             );
                           },
@@ -1819,6 +2056,7 @@ class _RiderTrackerPageState extends State<RiderTrackerPage>
                       ]),
                     ),
 
+                    // Rider card
                     Container(
                       margin: const EdgeInsets.fromLTRB(12, 0, 12, 10),
                       padding: const EdgeInsets.all(12),
@@ -1828,10 +2066,13 @@ class _RiderTrackerPageState extends State<RiderTrackerPage>
                           border: Border.all(color: t.border)),
                       child: Row(children: [
                         Container(
-                          width: 44, height: 44,
+                          width: 44,
+                          height: 44,
                           decoration: BoxDecoration(
-                            gradient: const LinearGradient(
-                                colors: [Color(0xFF34A853), Color(0xFF1a7a3a)]),
+                            gradient: const LinearGradient(colors: [
+                              Color(0xFF34A853),
+                              Color(0xFF1a7a3a)
+                            ]),
                             borderRadius: BorderRadius.circular(22),
                           ),
                           child: Center(
@@ -1862,7 +2103,7 @@ class _RiderTrackerPageState extends State<RiderTrackerPage>
                                     style: TextStyle(
                                         fontSize: 10,
                                         color: t.textSecondary)),
-                                const Text(' · FROM API ✅',
+                                const Text(' · LIVE GPS ✅',
                                     style: TextStyle(
                                         fontSize: 10,
                                         color: Color(0xFF34A853),
@@ -1891,6 +2132,7 @@ class _RiderTrackerPageState extends State<RiderTrackerPage>
                       ]),
                     ),
 
+                    // Status steps
                     Container(
                       margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
                       padding: const EdgeInsets.all(14),
@@ -1915,15 +2157,16 @@ class _RiderTrackerPageState extends State<RiderTrackerPage>
                               children: [
                                 Column(children: [
                                   AnimatedContainer(
-                                    duration: const Duration(milliseconds: 400),
+                                    duration:
+                                    const Duration(milliseconds: 400),
                                     curve: Curves.easeOut,
-                                    width: 24, height: 24,
+                                    width: 24,
+                                    height: 24,
                                     decoration: BoxDecoration(
-                                      shape: BoxShape.circle,
-                                      color: isActive
-                                          ? const Color(0xFF34A853)
-                                          : t.border,
-                                    ),
+                                        shape: BoxShape.circle,
+                                        color: isActive
+                                            ? const Color(0xFF34A853)
+                                            : t.border),
                                     child: Center(
                                       child: isCurrent && !_isDelivered
                                           ? const CupertinoActivityIndicator(
@@ -1940,8 +2183,10 @@ class _RiderTrackerPageState extends State<RiderTrackerPage>
                                   ),
                                   if (i < _steps.length - 1)
                                     AnimatedContainer(
-                                      duration: const Duration(milliseconds: 400),
-                                      width: 2, height: 22,
+                                      duration:
+                                      const Duration(milliseconds: 400),
+                                      width: 2,
+                                      height: 22,
                                       color: _statusStep > i
                                           ? const Color(0xFF34A853)
                                           : t.border,
@@ -1970,11 +2215,11 @@ class _RiderTrackerPageState extends State<RiderTrackerPage>
                                         if (isActive)
                                           Text(_steps[i]["sub"]!,
                                               style: TextStyle(
-                                                fontSize: 10,
-                                                color: isCurrent
-                                                    ? const Color(0xFF34A853)
-                                                    : t.textSecondary,
-                                              )),
+                                                  fontSize: 10,
+                                                  color: isCurrent
+                                                      ? const Color(
+                                                      0xFF34A853)
+                                                      : t.textSecondary)),
                                         const SizedBox(height: 12),
                                       ],
                                     ),
