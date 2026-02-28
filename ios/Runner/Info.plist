@@ -2,14 +2,12 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-    <key>NSLocationWhenInUseUsageDescription</key>
-    <string>We need your location to track your order</string>
-    <key>NSFaceIDUsageDescription</key>
-    <string>Why is my app authenticating using face id?</string>
-    <key>NSLocationAlwaysUsageDescription</key>
-    <string>We need your location to track your order</string>
-    <key>GMSApiKey</key>
-    <string>YOUR_GOOGLE_MAPS_API_KEY</string>
+   <key>NSLocationWhenInUseUsageDescription</key>
+   <string>We need your location to show your delivery address.</string>
+   <key>NSLocationAlwaysUsageDescription</key>
+   <string>We need your location to track your delivery in real-time.</string>
+   <key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+   <string>We need your location for real-time delivery tracking.</string>
     <key>NSFaceIDUsageDescription</key>
     <string>We use Face ID to authenticate you</string>
 	<key>CFBundleDevelopmentRegion</key>

@@ -7,6 +7,8 @@ import 'package:http/http.dart' as http;
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:geocoding/geocoding.dart';
 import 'settings.dart';
 import 'orders.dart';
 import 'theme.dart';
@@ -168,12 +170,82 @@ class _HomepageState extends State<Homepage> {
   String paymentStatus = "";
   bool isPolling = false;
 
+  // ── NEW: GPS / Location state ──────────────────────────────────────────────
+  LatLng? _currentLatLng;
+  String _locationLabel = "Getting location...";
+  bool _locationLoading = true;
+  GoogleMapController? _homeMapController;
+
   bool get isDark => box.get("isDark", defaultValue: false);
+
+  @override
+  void initState() {
+    super.initState();
+    _initLocation(); // ← fetch real GPS on startup
+  }
 
   @override
   void dispose() {
     pollingTimer?.cancel();
     super.dispose();
+  }
+
+  // ── NEW: GPS fetch + reverse geocoding ────────────────────────────────────
+  Future<void> _initLocation() async {
+    setState(() => _locationLoading = true);
+    try {
+      LocationPermission perm = await Geolocator.checkPermission();
+      if (perm == LocationPermission.denied) {
+        perm = await Geolocator.requestPermission();
+      }
+      if (perm == LocationPermission.deniedForever) {
+        if (mounted) {
+          setState(() {
+            _locationLabel = "Location permission denied";
+            _locationLoading = false;
+          });
+        }
+        return;
+      }
+
+      final Position pos = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+      );
+      final LatLng latLng = LatLng(pos.latitude, pos.longitude);
+
+      String label =
+          "${pos.latitude.toStringAsFixed(4)}, ${pos.longitude.toStringAsFixed(4)}";
+      try {
+        final placemarks =
+        await placemarkFromCoordinates(pos.latitude, pos.longitude);
+        if (placemarks.isNotEmpty) {
+          final p = placemarks.first;
+          final parts = [
+            p.subLocality,
+            p.locality,
+            p.administrativeArea,
+          ].where((s) => s != null && s!.isNotEmpty).toList();
+          if (parts.isNotEmpty) label = parts.join(', ');
+        }
+      } catch (_) {}
+
+      if (!mounted) return;
+      setState(() {
+        _currentLatLng = latLng;
+        _locationLabel = label;
+        _locationLoading = false;
+      });
+      _homeMapController?.animateCamera(
+        CameraUpdate.newLatLngZoom(latLng, 15),
+      );
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _locationLabel = "Could not get location";
+          _locationLoading = false;
+        });
+      }
+    }
   }
 
   // ─── Laptop card ────────────────────────────────────────────────────────────
@@ -395,8 +467,9 @@ class _HomepageState extends State<Homepage> {
                 'rider_name': 'Miguel Santos',
                 'rider_plate': 'TLG 8821',
                 'rider_rating': 4.8,
-                'lat': 15.4755,
-                'lng': 120.5963,
+                // ── NEW: use real GPS coords ──
+                'lat': _currentLatLng?.latitude ?? 15.4755,
+                'lng': _currentLatLng?.longitude ?? 120.5963,
                 'eta_minutes': 1,
                 'status': 'preparing',
               });
@@ -407,7 +480,11 @@ class _HomepageState extends State<Homepage> {
                   context,
                   CupertinoPageRoute(
                     builder: (_) => LocationPinPage(
-                        orderId: orderId, itemName: itemName),
+                      orderId: orderId,
+                      itemName: itemName,
+                      // ── NEW: pass real GPS to pin page ──
+                      initialLocation: _currentLatLng,
+                    ),
                   ),
                 );
               }
@@ -503,6 +580,10 @@ class _HomepageState extends State<Homepage> {
     final username =
     box.get("username", defaultValue: "User") as String;
 
+    // ── NEW: fallback center if GPS not ready yet ──
+    final LatLng mapCenter =
+        _currentLatLng ?? const LatLng(15.4755, 120.5963);
+
     return CupertinoPageScaffold(
       backgroundColor: t.page,
       child: SafeArea(
@@ -579,47 +660,228 @@ class _HomepageState extends State<Homepage> {
                     ),
                     const SizedBox(height: 18),
 
-                    // ── Location bar ─────────────────────────────────────────
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 14, vertical: 12),
-                      decoration: BoxDecoration(
-                        color: t.card,
-                        borderRadius: BorderRadius.circular(14),
-                        border: Border.all(color: t.border, width: 1),
-                      ),
-                      child: Row(children: [
-                        Container(
-                          padding: const EdgeInsets.all(6),
-                          decoration: BoxDecoration(
-                              color: kHighlight,
-                              borderRadius: BorderRadius.circular(8)),
-                          child: const Icon(
-                              CupertinoIcons.location_fill,
-                              color: Colors.white,
-                              size: 13),
+                    // ── Location bar — NOW REAL GPS ───────────────────────────
+                    GestureDetector(
+                      onTap: _initLocation, // tap to refresh GPS
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 14, vertical: 12),
+                        decoration: BoxDecoration(
+                          color: t.card,
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(color: t.border, width: 1),
                         ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text("Deliver to",
-                                  style: TextStyle(
-                                      fontSize: 10,
-                                      color: t.textSecondary,
-                                      fontWeight: FontWeight.w500)),
-                              Text("Tarlac City, Central Luzon",
+                        child: Row(children: [
+                          Container(
+                            padding: const EdgeInsets.all(6),
+                            decoration: BoxDecoration(
+                                color: kHighlight,
+                                borderRadius: BorderRadius.circular(8)),
+                            child: const Icon(
+                                CupertinoIcons.location_fill,
+                                color: Colors.white,
+                                size: 13),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text("Your location",
+                                    style: TextStyle(
+                                        fontSize: 10,
+                                        color: t.textSecondary,
+                                        fontWeight: FontWeight.w500)),
+                                // ── shows loading or real address ──
+                                _locationLoading
+                                    ? Row(children: [
+                                  const CupertinoActivityIndicator(
+                                      radius: 7),
+                                  const SizedBox(width: 6),
+                                  Text("Fetching GPS...",
+                                      style: TextStyle(
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.w600,
+                                          color: t.textSecondary)),
+                                ])
+                                    : Text(
+                                  _locationLabel,
                                   style: TextStyle(
                                       fontSize: 13,
                                       fontWeight: FontWeight.w700,
-                                      color: t.textPrimary)),
-                            ],
+                                      color: t.textPrimary),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ],
+                            ),
                           ),
-                        ),
-                        Icon(CupertinoIcons.chevron_down,
-                            color: t.textSecondary, size: 14),
-                      ]),
+                          Icon(
+                            _locationLoading
+                                ? CupertinoIcons.arrow_2_circlepath
+                                : CupertinoIcons.location,
+                            color: kHighlight,
+                            size: 16,
+                          ),
+                        ]),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+
+                    // ── Google Maps Mini-map — REAL GPS ───────────────────────
+                    Container(
+                      height: 200,
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(20),
+                        boxShadow: [
+                          BoxShadow(
+                              color: kHighlight.withOpacity(0.15),
+                              blurRadius: 18,
+                              offset: const Offset(0, 6)),
+                        ],
+                      ),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(20),
+                        child: Stack(children: [
+                          // ── Real Google Map ──
+                          GoogleMap(
+                            initialCameraPosition: CameraPosition(
+                              target: mapCenter,
+                              zoom: 15,
+                            ),
+                            onMapCreated: (c) {
+                              _homeMapController = c;
+                              if (_currentLatLng != null) {
+                                c.animateCamera(
+                                  CameraUpdate.newLatLngZoom(
+                                      _currentLatLng!, 15),
+                                );
+                              }
+                            },
+                            myLocationEnabled: true,
+                            myLocationButtonEnabled: false,
+                            zoomControlsEnabled: false,
+                            mapToolbarEnabled: false,
+                            compassEnabled: false,
+                            mapType: MapType.normal,
+                            markers: _currentLatLng == null
+                                ? {}
+                                : {
+                              Marker(
+                                markerId:
+                                const MarkerId('my_location'),
+                                position: _currentLatLng!,
+                                icon: BitmapDescriptor
+                                    .defaultMarkerWithHue(
+                                    BitmapDescriptor.hueAzure),
+                                infoWindow: InfoWindow(
+                                  title: 'You are here 📍',
+                                  snippet: _locationLabel,
+                                ),
+                              ),
+                            },
+                          ),
+
+                          // ── Loading overlay ──
+                          if (_locationLoading)
+                            Container(
+                              color: Colors.black.withOpacity(0.4),
+                              child: Center(
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    const CupertinoActivityIndicator(
+                                        color: Colors.white, radius: 14),
+                                    const SizedBox(height: 10),
+                                    const Text(
+                                      "Getting your location...",
+                                      style: TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.w600),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+
+                          // ── Live GPS badge (bottom-left) ──
+                          Positioned(
+                            bottom: 10,
+                            left: 10,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 10, vertical: 6),
+                              decoration: BoxDecoration(
+                                color: Colors.white.withOpacity(0.92),
+                                borderRadius: BorderRadius.circular(10),
+                                boxShadow: [
+                                  BoxShadow(
+                                      color:
+                                      Colors.black.withOpacity(0.12),
+                                      blurRadius: 6)
+                                ],
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Container(
+                                    width: 7,
+                                    height: 7,
+                                    decoration: const BoxDecoration(
+                                        color: Color(0xFF34A853),
+                                        shape: BoxShape.circle),
+                                  ),
+                                  const SizedBox(width: 5),
+                                  Text(
+                                    _locationLoading
+                                        ? "Locating..."
+                                        : "Live · GPS",
+                                    style: const TextStyle(
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w700,
+                                        color: Colors.black87),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+
+                          // ── Recenter button (bottom-right) ──
+                          Positioned(
+                            bottom: 10,
+                            right: 10,
+                            child: GestureDetector(
+                              onTap: () {
+                                if (_currentLatLng != null) {
+                                  _homeMapController?.animateCamera(
+                                    CameraUpdate.newLatLngZoom(
+                                        _currentLatLng!, 15),
+                                  );
+                                }
+                              },
+                              child: Container(
+                                width: 38,
+                                height: 38,
+                                decoration: BoxDecoration(
+                                  color: Colors.white,
+                                  borderRadius: BorderRadius.circular(10),
+                                  boxShadow: [
+                                    BoxShadow(
+                                        color: Colors.black
+                                            .withOpacity(0.15),
+                                        blurRadius: 6)
+                                  ],
+                                ),
+                                child: const Icon(
+                                    CupertinoIcons.location_fill,
+                                    color: kHighlight,
+                                    size: 18),
+                              ),
+                            ),
+                          ),
+                        ]),
+                      ),
                     ),
                     const SizedBox(height: 20),
 
@@ -852,22 +1114,31 @@ class _PaymentPageState extends State<PaymentPage> {
 class LocationPinPage extends StatefulWidget {
   final String orderId;
   final String itemName;
-  const LocationPinPage(
-      {super.key, required this.orderId, required this.itemName});
+  // ── NEW: accepts real GPS from Homepage ──
+  final LatLng? initialLocation;
+
+  const LocationPinPage({
+    super.key,
+    required this.orderId,
+    required this.itemName,
+    this.initialLocation,
+  });
 
   @override
   State<LocationPinPage> createState() => _LocationPinPageState();
 }
 
 class _LocationPinPageState extends State<LocationPinPage> {
-  static const LatLng _center = LatLng(15.4755, 120.5963);
-  LatLng _pinLocation = const LatLng(15.4755, 120.5963);
+  // ── NEW: starts at real GPS, fallback to Tarlac City ──
+  late LatLng _pinLocation;
   GoogleMapController? _mapController;
   Set<Marker> _markers = {};
 
   @override
   void initState() {
     super.initState();
+    _pinLocation =
+        widget.initialLocation ?? const LatLng(15.4755, 120.5963);
     _markers = {
       Marker(
         markerId: const MarkerId('delivery'),
@@ -980,7 +1251,7 @@ class _LocationPinPageState extends State<LocationPinPage> {
             ]),
           ),
 
-          // Google Map
+          // Google Map — starts at real GPS location
           Expanded(
             child: Container(
               margin: const EdgeInsets.symmetric(horizontal: 16),
@@ -996,8 +1267,8 @@ class _LocationPinPageState extends State<LocationPinPage> {
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(20),
                 child: GoogleMap(
-                  initialCameraPosition: const CameraPosition(
-                      target: _center, zoom: 15),
+                  initialCameraPosition: CameraPosition(
+                      target: _pinLocation, zoom: 15),
                   onMapCreated: (c) => _mapController = c,
                   onTap: _onMapTap,
                   markers: _markers,
@@ -1026,7 +1297,7 @@ class _LocationPinPageState extends State<LocationPinPage> {
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      "Tarlac City · ${_pinLocation.latitude.toStringAsFixed(4)}, ${_pinLocation.longitude.toStringAsFixed(4)}",
+                      "${_pinLocation.latitude.toStringAsFixed(4)}, ${_pinLocation.longitude.toStringAsFixed(4)}",
                       style: TextStyle(
                           fontSize: 12,
                           color: t.textSecondary,
