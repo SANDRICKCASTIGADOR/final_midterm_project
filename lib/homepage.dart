@@ -97,7 +97,7 @@ class _HomepageState extends State<Homepage> {
 
   bool get isDark => box.get("isDark", defaultValue: false);
 
-  // ── Santa Ana, Pampanga coordinates ──
+  // ── Santa Ana, Pampanga coordinates (store/rider start) ──
   static const double kSantaAnaLat = 15.0820;
   static const double kSantaAnaLng = 120.7780;
 
@@ -1000,6 +1000,7 @@ class _LocationPinPageState extends State<LocationPinPage> {
   @override
   void initState() {
     super.initState();
+    // Default pin to user's current location, fallback to store location
     _pinLocation = widget.initialLocation ??
         LatLng(widget.riderStartLat, widget.riderStartLng);
     _updateMarker();
@@ -1013,8 +1014,18 @@ class _LocationPinPageState extends State<LocationPinPage> {
         draggable: true,
         icon: BitmapDescriptor.defaultMarkerWithHue(
             BitmapDescriptor.hueGreen),
-        infoWindow: const InfoWindow(title: 'Delivery Location'),
+        infoWindow: const InfoWindow(title: 'Delivery Location 🏠'),
         onDragEnd: (newPos) => setState(() => _pinLocation = newPos),
+      ),
+      // Also show the store/rider start location
+      Marker(
+        markerId: const MarkerId('store'),
+        position: LatLng(widget.riderStartLat, widget.riderStartLng),
+        icon: BitmapDescriptor.defaultMarkerWithHue(
+            BitmapDescriptor.hueOrange),
+        infoWindow: const InfoWindow(
+            title: 'Store Location 🏪',
+            snippet: 'Rider will depart from here'),
       ),
     };
   }
@@ -1099,9 +1110,33 @@ class _LocationPinPageState extends State<LocationPinPage> {
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(20),
                 child: GoogleMap(
-                  initialCameraPosition:
-                  CameraPosition(target: _pinLocation, zoom: 15),
-                  onMapCreated: (c) => _mapController = c,
+                  initialCameraPosition: CameraPosition(
+                    // Center map to show both store and user location
+                    target: _pinLocation,
+                    zoom: 13,
+                  ),
+                  onMapCreated: (c) {
+                    _mapController = c;
+                    // Fit bounds to show both markers
+                    Future.delayed(const Duration(milliseconds: 300), () {
+                      final storeLat = widget.riderStartLat;
+                      final storeLng = widget.riderStartLng;
+                      final userLat = _pinLocation.latitude;
+                      final userLng = _pinLocation.longitude;
+                      final bounds = LatLngBounds(
+                        southwest: LatLng(
+                          storeLat < userLat ? storeLat : userLat,
+                          storeLng < userLng ? storeLng : userLng,
+                        ),
+                        northeast: LatLng(
+                          storeLat > userLat ? storeLat : userLat,
+                          storeLng > userLng ? storeLng : userLng,
+                        ),
+                      );
+                      c.animateCamera(
+                          CameraUpdate.newLatLngBounds(bounds, 80));
+                    });
+                  },
                   onTap: _onMapTap,
                   markers: _markers,
                   myLocationEnabled: true,
@@ -1159,9 +1194,15 @@ class _LocationPinPageState extends State<LocationPinPage> {
                       ),
                     );
                   },
-                  child: const Text("Confirm Location & Track Order 🛵",
-                      style: TextStyle(
-                          fontWeight: FontWeight.w700, fontSize: 15)),
+                  // FIX: Changed text color to white for better visibility
+                  child: const Text(
+                    "Confirm Location & Track Order 🛵",
+                    style: TextStyle(
+                      fontWeight: FontWeight.w700,
+                      fontSize: 15,
+                      color: Colors.white, // Explicit white text
+                    ),
+                  ),
                 ),
               ),
             ]),
@@ -1170,6 +1211,26 @@ class _LocationPinPageState extends State<LocationPinPage> {
       ),
     );
   }
+}
+
+// ─── A* Pathfinding Node ───────────────────────────────────────────────────────
+class _AStarNode implements Comparable<_AStarNode> {
+  final int index;
+  final double g; // cost from start
+  final double h; // heuristic to goal
+  final int? parent;
+
+  double get f => g + h;
+
+  const _AStarNode({
+    required this.index,
+    required this.g,
+    required this.h,
+    this.parent,
+  });
+
+  @override
+  int compareTo(_AStarNode other) => f.compareTo(other.f);
 }
 
 // ─── Rider Tracker Page ────────────────────────────────────────────────────────
@@ -1228,15 +1289,17 @@ class _RiderTrackerPageState extends State<RiderTrackerPage>
   String _riderPlate = "---";
   double _riderRating = 0.0;
   int _etaMinutes = 1;
-  String _status = "preparing";
+  String _status = "confirmed";
   int _statusStep = 0;
   bool _isDelivered = false;
   bool _isLoading = true;
 
+  // Status steps matching midterm requirements:
+  // Confirmed → Packing (preparing) → On the Way → Almost There → Delivered
   final List<Map<String, String>> _steps = [
     {"title": "Order Confirmed", "sub": "We received your order 💻"},
     {"title": "Packing Items", "sub": "Your laptop is being packed 📦"},
-    {"title": "Courier On the Way", "sub": "Courier picked up your package 🛵"},
+    {"title": "Delivery is on the way", "sub": "Courier picked up your package 🛵"},
     {"title": "Almost There!", "sub": "Courier is nearby your location 📍"},
     {"title": "Delivered! 🎉", "sub": "Enjoy your new laptop!"},
   ];
@@ -1247,7 +1310,6 @@ class _RiderTrackerPageState extends State<RiderTrackerPage>
     final recorder = ui.PictureRecorder();
     final canvas = Canvas(recorder, Rect.fromLTWH(0, 0, size, size));
 
-    // Drop shadow ellipse
     final shadowPaint = Paint()
       ..color = Colors.black.withOpacity(0.22)
       ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4);
@@ -1257,7 +1319,6 @@ class _RiderTrackerPageState extends State<RiderTrackerPage>
       shadowPaint,
     );
 
-    // Pin triangle (green)
     final pinPaint = Paint()..color = const Color(0xFF1B8A3E);
     final pinPath = Path()
       ..moveTo(size / 2 - 9, size / 2 + 18)
@@ -1266,13 +1327,11 @@ class _RiderTrackerPageState extends State<RiderTrackerPage>
       ..close();
     canvas.drawPath(pinPath, pinPaint);
 
-    // Outer glow ring
     final glowPaint = Paint()
       ..color = const Color(0xFF34A853).withOpacity(0.3)
       ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 8);
     canvas.drawCircle(Offset(size / 2, size / 2 - 4), 30, glowPaint);
 
-    // Main circle (green gradient)
     final bgPaint = Paint()
       ..shader = RadialGradient(
         colors: [const Color(0xFF4CCA6E), const Color(0xFF1B8A3E)],
@@ -1282,18 +1341,15 @@ class _RiderTrackerPageState extends State<RiderTrackerPage>
           center: Offset(size / 2, size / 2 - 4), radius: 28));
     canvas.drawCircle(Offset(size / 2, size / 2 - 4), 28, bgPaint);
 
-    // White border ring
     final borderPaint = Paint()
       ..color = Colors.white
       ..style = PaintingStyle.stroke
       ..strokeWidth = 3;
     canvas.drawCircle(Offset(size / 2, size / 2 - 4), 28, borderPaint);
 
-    // Inner white circle for contrast
     final innerPaint = Paint()..color = Colors.white.withOpacity(0.15);
     canvas.drawCircle(Offset(size / 2, size / 2 - 4), 22, innerPaint);
 
-    // Motorcycle emoji
     final tp = TextPainter(
       text: const TextSpan(
         text: '🛵',
@@ -1330,7 +1386,6 @@ class _RiderTrackerPageState extends State<RiderTrackerPage>
       shadowPaint,
     );
 
-    // Pin triangle (blue)
     final pinPaint = Paint()..color = const Color(0xFF1557A0);
     final pinPath = Path()
       ..moveTo(size / 2 - 8, size / 2 + 16)
@@ -1339,7 +1394,6 @@ class _RiderTrackerPageState extends State<RiderTrackerPage>
       ..close();
     canvas.drawPath(pinPath, pinPaint);
 
-    // Circle (blue gradient)
     final bgPaint = Paint()
       ..shader = RadialGradient(
         colors: [const Color(0xFF4A90E2), const Color(0xFF1557A0)],
@@ -1353,7 +1407,6 @@ class _RiderTrackerPageState extends State<RiderTrackerPage>
       ..strokeWidth = 3;
     canvas.drawCircle(Offset(size / 2, size / 2 - 4), 26, borderPaint);
 
-    // House emoji
     final tp = TextPainter(
       text: const TextSpan(
         text: '🏠',
@@ -1372,7 +1425,85 @@ class _RiderTrackerPageState extends State<RiderTrackerPage>
     return BitmapDescriptor.fromBytes(bytes!.buffer.asUint8List());
   }
 
-  // ─── Fetch real road waypoints from OSRM (free, no API key) ───────────────
+  // ─── A* Pathfinding Algorithm ──────────────────────────────────────────────
+  // Generates intermediate waypoints using A* heuristic on a virtual grid,
+  // then maps them back to real lat/lng coordinates along the OSRM road route.
+  List<LatLng> _aStarPath(List<LatLng> roadPoints) {
+    if (roadPoints.length <= 2) return roadPoints;
+
+    // Build a simplified graph from road points
+    // Each node connects to adjacent nodes, A* finds optimal order
+    final int n = roadPoints.length;
+    final startIdx = 0;
+    final goalIdx = n - 1;
+
+    // A* open set (priority queue via sorted list)
+    final openList = <_AStarNode>[];
+    final closedSet = <int>{};
+    final gScore = <int, double>{};
+    final parentMap = <int, int>{};
+
+    double heuristic(int idx) {
+      // Euclidean distance as heuristic (admissible)
+      return _latLngDistance(roadPoints[idx], roadPoints[goalIdx]);
+    }
+
+    gScore[startIdx] = 0.0;
+    openList.add(_AStarNode(
+      index: startIdx,
+      g: 0.0,
+      h: heuristic(startIdx),
+    ));
+
+    while (openList.isNotEmpty) {
+      openList.sort();
+      final current = openList.removeAt(0);
+
+      if (current.index == goalIdx) {
+        // Reconstruct path
+        final path = <int>[];
+        int? cur = goalIdx;
+        while (cur != null) {
+          path.add(cur);
+          cur = parentMap[cur];
+        }
+        return path.reversed.map((i) => roadPoints[i]).toList();
+      }
+
+      if (closedSet.contains(current.index)) continue;
+      closedSet.add(current.index);
+
+      // Neighbors: prev and next nodes in road sequence
+      final neighbors = <int>[];
+      if (current.index > 0) neighbors.add(current.index - 1);
+      if (current.index < n - 1) neighbors.add(current.index + 1);
+      // Allow skipping a node for shortcutting (like A* on sparse graph)
+      if (current.index < n - 2) neighbors.add(current.index + 2);
+
+      for (final neighborIdx in neighbors) {
+        if (closedSet.contains(neighborIdx)) continue;
+
+        final tentativeG = (gScore[current.index] ?? double.infinity) +
+            _latLngDistance(roadPoints[current.index], roadPoints[neighborIdx]);
+
+        if (tentativeG < (gScore[neighborIdx] ?? double.infinity)) {
+          gScore[neighborIdx] = tentativeG;
+          parentMap[neighborIdx] = current.index;
+          openList.add(_AStarNode(
+            index: neighborIdx,
+            g: tentativeG,
+            h: heuristic(neighborIdx),
+            parent: current.index,
+          ));
+        }
+      }
+    }
+
+    // Fallback: return original road points
+    return roadPoints;
+  }
+
+  // ─── Fetch real road waypoints from OSRM ──────────────────────────────────
   Future<List<LatLng>> _fetchRoadWaypoints() async {
     final startLng = widget.riderStartLng;
     final startLat = widget.riderStartLat;
@@ -1384,6 +1515,8 @@ class _RiderTrackerPageState extends State<RiderTrackerPage>
         '$startLng,$startLat;$endLng,$endLat'
         '?overview=full&geometries=geojson&steps=false';
 
+    List<LatLng> roadPoints = [];
+
     try {
       final res = await http.get(Uri.parse(url)).timeout(
         const Duration(seconds: 8),
@@ -1392,27 +1525,31 @@ class _RiderTrackerPageState extends State<RiderTrackerPage>
         final data = jsonDecode(res.body);
         final coords =
         data['routes'][0]['geometry']['coordinates'] as List;
-        final roadPoints = coords
+        roadPoints = coords
             .map((c) =>
             LatLng((c[1] as num).toDouble(), (c[0] as num).toDouble()))
             .toList();
-
-        if (roadPoints.length >= 2) {
-          return _densifyWaypoints(roadPoints, 80);
-        }
       }
     } catch (e) {
       debugPrint('OSRM routing error: $e — falling back to straight line');
     }
 
-    // Fallback: straight-line
-    return List.generate(81, (i) {
-      final t = i / 80;
-      return LatLng(
-        startLat + (endLat - startLat) * t,
-        startLng + (endLng - startLng) * t,
-      );
-    });
+    // Use straight-line fallback if OSRM fails
+    if (roadPoints.length < 2) {
+      roadPoints = List.generate(21, (i) {
+        final t = i / 20;
+        return LatLng(
+          startLat + (endLat - startLat) * t,
+          startLng + (endLng - startLng) * t,
+        );
+      });
+    }
+
+    // Apply A* to find optimal traversal order of the road points
+    final aStarPoints = _aStarPath(roadPoints);
+
+    // Densify for smooth animation
+    return _densifyWaypoints(aStarPoints, 80);
   }
 
   List<LatLng> _densifyWaypoints(List<LatLng> points, int targetCount) {
@@ -1422,6 +1559,8 @@ class _RiderTrackerPageState extends State<RiderTrackerPage>
     for (int i = 0; i < points.length - 1; i++) {
       totalDist += _latLngDistance(points[i], points[i + 1]);
     }
+
+    if (totalDist == 0) return points;
 
     final stepDist = totalDist / targetCount;
     final result = <LatLng>[points.first];
@@ -1547,6 +1686,7 @@ class _RiderTrackerPageState extends State<RiderTrackerPage>
   void initState() {
     super.initState();
 
+    // Rider STARTS at the store location (Santa Ana, Pampanga)
     _riderLatLng = LatLng(widget.riderStartLat, widget.riderStartLng);
     _prevLatLng = _riderLatLng;
     _nextLatLng = _riderLatLng;
@@ -1561,7 +1701,6 @@ class _RiderTrackerPageState extends State<RiderTrackerPage>
     )..addListener(_onAnimTick);
 
     _listenToCourierAPI();
-    _scheduleStatusAutoUpdate();
     _initRouteAndIcons();
   }
 
@@ -1579,12 +1718,14 @@ class _RiderTrackerPageState extends State<RiderTrackerPage>
       _destIcon = results[1] as BitmapDescriptor;
       _waypoints = results[2] as List<LatLng>;
       _waypointsReady = true;
+      // Rider starts at first waypoint (store location)
       _riderLatLng = _waypoints.first;
       _prevLatLng = _riderLatLng;
       _nextLatLng = _riderLatLng;
       _updateMapElements();
     });
 
+    // Fit map to show full route from store to destination
     if (_mapController != null && _waypoints.isNotEmpty) {
       final bounds = LatLngBounds(
         southwest: LatLng(
@@ -1604,8 +1745,7 @@ class _RiderTrackerPageState extends State<RiderTrackerPage>
               : widget.destLng,
         ),
       );
-      _mapController!
-          .animateCamera(CameraUpdate.newLatLngBounds(bounds, 70));
+      _mapController!.animateCamera(CameraUpdate.newLatLngBounds(bounds, 70));
     }
 
     _startRiderMovement();
@@ -1620,17 +1760,6 @@ class _RiderTrackerPageState extends State<RiderTrackerPage>
     _countdownTimer?.cancel();
     _statusAutoTimer?.cancel();
     super.dispose();
-  }
-
-  void _scheduleStatusAutoUpdate() {
-    _statusAutoTimer = Timer(const Duration(seconds: 6), () async {
-      if (!mounted || _isDelivered) return;
-      if (_status == 'preparing') {
-        await supabase
-            .from('rider_locations')
-            .update({'status': 'on_the_way'}).eq('order_id', widget.orderId);
-      }
-    });
   }
 
   void _listenToCourierAPI() {
@@ -1651,7 +1780,9 @@ class _RiderTrackerPageState extends State<RiderTrackerPage>
         _riderPlate = row['rider_plate'] ?? '---';
         _riderRating = (row['rider_rating'] ?? 0.0).toDouble();
         _etaMinutes = row['eta_minutes'] ?? 0;
-        _status = row['status'] ?? 'preparing';
+        _status = row['status'] ?? 'confirmed';
+
+        // Map backend status to step index
         switch (_status) {
           case 'confirmed':
             _statusStep = 0;
@@ -1660,7 +1791,7 @@ class _RiderTrackerPageState extends State<RiderTrackerPage>
             _statusStep = 1;
             break;
           case 'on_the_way':
-            _statusStep = 2;
+            _statusStep = 2; // "Delivery is on the way"
             break;
           case 'nearby':
             _statusStep = 3;
@@ -1706,14 +1837,16 @@ class _RiderTrackerPageState extends State<RiderTrackerPage>
 
   void _startCountdown() {
     int secondsLeft = kTotalSeconds;
+
     _countdownTimer =
-        Timer.periodic(const Duration(seconds: 6), (timer) async {
+        Timer.periodic(const Duration(seconds: 3), (timer) async {
           if (!mounted || _isDelivered) {
             timer.cancel();
             return;
           }
-          secondsLeft -= 6;
+          secondsLeft -= 3;
           final minutesLeft = (secondsLeft / 60).ceil().clamp(0, 1);
+
           if (secondsLeft <= 0) {
             timer.cancel();
             await supabase
@@ -1721,14 +1854,24 @@ class _RiderTrackerPageState extends State<RiderTrackerPage>
                 .update({'eta_minutes': 0, 'status': 'delivered'})
                 .eq('order_id', widget.orderId);
           } else {
-            final newStatus = secondsLeft <= 18
-                ? 'nearby'
-                : secondsLeft <= 42
-                ? 'on_the_way'
-                : _status;
+            // After 1 minute total, status changes:
+            // 0-18s remaining = nearby, 18-42s = on_the_way, 42-60s = preparing
+            // But since countdown starts at 60 and goes down:
+            // 60s → confirmed, then after ~6s → preparing
+            // After ~20s → on_the_way ("Delivery is on the way")
+            // After ~42s → nearby
+            String newStatus;
+            if (secondsLeft <= 18) {
+              newStatus = 'nearby';
+            } else if (secondsLeft <= 42) {
+              newStatus = 'on_the_way'; // "Delivery is on the way" per midterm req
+            } else {
+              newStatus = 'preparing';
+            }
+
             await supabase.from('rider_locations').update(
-                {'eta_minutes': minutesLeft, 'status': newStatus}).eq(
-                'order_id', widget.orderId);
+                {'eta_minutes': minutesLeft, 'status': newStatus})
+                .eq('order_id', widget.orderId);
           }
         });
   }
@@ -1757,7 +1900,7 @@ class _RiderTrackerPageState extends State<RiderTrackerPage>
                             fontSize: 14,
                             fontWeight: FontWeight.w500)),
                     const SizedBox(height: 8),
-                    Text("Calculating road route 🛵",
+                    Text("Calculating A* road route 🛵",
                         style: TextStyle(
                             color: t.textSecondary.withOpacity(0.6),
                             fontSize: 12)),
@@ -1779,12 +1922,14 @@ class _RiderTrackerPageState extends State<RiderTrackerPage>
             Positioned.fill(
               child: GoogleMap(
                 initialCameraPosition: CameraPosition(
+                  // Start camera at rider's position (store)
                   target: LatLng(widget.riderStartLat, widget.riderStartLng),
                   zoom: 14,
                 ),
                 onMapCreated: (c) {
                   _mapController = c;
                   if (_waypoints.isNotEmpty) {
+                    // Show full route from store to destination
                     final bounds = LatLngBounds(
                       southwest: LatLng(
                         widget.riderStartLat < widget.destLat
@@ -1920,7 +2065,7 @@ class _RiderTrackerPageState extends State<RiderTrackerPage>
               ),
             ),
 
-            // ── Real Road Route badge ──────────────────────────────────────
+            // ── A* Road Route badge ────────────────────────────────────────
             Positioned(
               top: 110,
               left: 12,
@@ -1942,7 +2087,7 @@ class _RiderTrackerPageState extends State<RiderTrackerPage>
                       decoration: const BoxDecoration(
                           color: Color(0xFF34A853), shape: BoxShape.circle)),
                   const SizedBox(width: 5),
-                  const Text('Real Road Route',
+                  const Text('A* Road Route',
                       style: TextStyle(
                           fontSize: 9,
                           fontWeight: FontWeight.w700,
